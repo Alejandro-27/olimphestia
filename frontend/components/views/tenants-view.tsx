@@ -223,28 +223,34 @@ export function TenantsView() {
                   <StatusBadge status={tenant.status ?? "activo"} />
                 </TableCell>
                 <TableCell className="text-right">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleToggleStatus(tenant.id, tenant.status ?? "activo")}
-                    disabled={toggleSaving === tenant.id}
-                  >
-                    {toggleSaving === tenant.id ? (
-                      <Loader2 className="mr-2 h-3 w-3" />
-                    ) : (
-                      tenant.status === "activo" ? (
-                        <>
-                          <AlertCircle className="mr-2 h-3 w-3" />
-                          Desactivar
-                        </>
+                  {tenant.hasSuperadmin ? (
+                    <Badge variant="secondary" title="Hotel del superadministrador: no se puede desactivar">
+                      Sistema
+                    </Badge>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleToggleStatus(tenant.id, tenant.status ?? "activo")}
+                      disabled={toggleSaving === tenant.id}
+                    >
+                      {toggleSaving === tenant.id ? (
+                        <Loader2 className="mr-2 h-3 w-3" />
                       ) : (
-                        <>
-                          <Building2 className="mr-2 h-3 w-3" />
-                          Activar
-                        </>
-                      )
-                    )}
-                  </Button>
+                        tenant.status === "activo" ? (
+                          <>
+                            <AlertCircle className="mr-2 h-3 w-3" />
+                            Desactivar
+                          </>
+                        ) : (
+                          <>
+                            <Building2 className="mr-2 h-3 w-3" />
+                            Activar
+                          </>
+                        )
+                      )}
+                    </Button>
+                  )}
                   <Button
                     size="sm"
                     variant="outline"

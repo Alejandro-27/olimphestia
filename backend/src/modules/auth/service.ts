@@ -346,8 +346,14 @@ export async function rejectRequest(userId: string): Promise<void> {
   }).where(eq(users.id, userId))
 }
 
-export async function listTenants(): Promise<{ id: string; name: string; slug: string; status: string }[]> {
-  return db.select({ id: tenants.id, name: tenants.name, slug: tenants.slug, status: tenants.status }).from(tenants)
+export async function listTenants(): Promise<{ id: string; name: string; slug: string; status: string; hasSuperadmin: boolean }[]> {
+  return db.select({
+    id: tenants.id,
+    name: tenants.name,
+    slug: tenants.slug,
+    status: tenants.status,
+    hasSuperadmin: sql<boolean>`exists (select 1 from ${users} where ${users.tenantId} = ${tenants.id} and ${users.role} = 'superadmin')`,
+  }).from(tenants)
 }
 
 export async function updateTenant(tenantId: string, input: UpdateTenantInput): Promise<void> {

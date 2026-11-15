@@ -43,6 +43,7 @@ export interface TenantInfo {
   name: string
   slug: string
   status: string
+  hasSuperadmin?: boolean
 }
 
 export interface SystemOverview {
