@@ -14,11 +14,13 @@ Documento de **estado dinámico** del proyecto. Complementa a `AGENTS.md` (conve
 
 ## Snapshot actual
 
-- Fecha: 2026-11-14 · Rama: `main` · Último commit: auth-context más robusto + SystemReportsView simplificado (36f6a2f)
-- **Pendiente**: desplegar backend en Render con commits más recientes; verificar login como superadmin en producción; ejecutar pnpm test:api contra BD real
+- Fecha: 2026-11-15 · Rama: `main` · Último commit: navegación por `activeView` + estado de hoteles (pendiente de push)
+- **Pendiente**: desplegar frontend en Cloudflare Pages y backend en Render con los cambios más recientes; verificar login como superadmin en producción; ejecutar pnpm test:api contra BD real
 - Código fuente: `tsc` limpio en frontend y backend; `pnpm test` **71/71** frontend OK
+- **Navegación SPA**: las vistas se cambian con `activeView`/`onNavigate`; `DashboardView` y `SystemReportsView` ya no usan `router.push` (causaba 404 en Cloudflare Pages porque `/calendar`, `/reports`, etc. no existen como archivos). El `_redirects` solo vive en `frontend/public/` (se copia a `out/`); se eliminaron `wrangler.toml` y `_redirects` de la raíz (el `wrangler.toml` era inválido y rompía el deploy).
+- **Informes del Sistema**: el backend devuelve `{ tenants }` y el frontend acepta también el formato antiguo (array); la vista tolera fallos de sesión sin romper el render.
+- **Playwright MCP operativo**: Chromium instalado en `~/.cache/ms-playwright` y MCP configurado con `--executable-path` (sin sudo). Sirve para reproducir 404, revisar consola y validar navegación.
 - Problema conocido: `GET /api/auth/me 401` en producción si el token no es válido o el backend no tiene los cambios más recientes; el sidebar y vistas deben manejar sesión inválida sin fallar
-- Herramientas disponibles: Playwright MCP para inspección visual en tiempo real de páginas web y diagnóstico de errores de renderizado (Cloudflare Pages + Render)
 - **Auditoría de dependencias**: `pnpm audit --prod` → 0 vulnerabilidades. En dev queda 1 moderada (`esbuild@0.18.20` vía `drizzle-kit`/`@esbuild-kit`; solo afecta al dev-server de esbuild, no se usa así). Resuelto con `overrides` en `pnpm-workspace.yaml` (pnpm v12 ya no lee `pnpm.overrides` de `package.json`).
 - Revertidos los cambios **visuales** de la auditoría de 7 fases a petición del usuario: la estética previa queda intacta. Se conserva la funcionalidad (legal, settings, consentimientos) y atributos sin impacto (`aria-*`, foco).
 - Browser bridge roto → verificación visual manual en `pnpm dev` (pendiente comprobar la CSP de producción, que solo aplica con `next build && next start`).

@@ -1,22 +1,20 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { useRouter } from "next/navigation"
 import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Loader2, RefreshCw } from "lucide-react"
 
-export function SystemReportsView() {
+export function SystemReportsView({ onNavigate }: { onNavigate: (view: string) => void }) {
   const [overview, setOverview] = useState<any>(null)
   const [tenantStats, setTenantStats] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const router = useRouter()
 
-  const navigateTo = (path: string) => () => {
-    router.push(path)
+  const navigateTo = (view: string) => () => {
+    onNavigate(view)
   }
 
   const fetchData = useCallback(async () => {
@@ -28,7 +26,8 @@ export function SystemReportsView() {
         api.auth.getTenantsWithStats?.(),
       ])
       if (overviewData) setOverview(overviewData)
-      if (tenantsData) setTenantStats(Array.isArray(tenantsData?.tenants) ? tenantsData.tenants : [])
+      const tenantList = Array.isArray(tenantsData) ? tenantsData : tenantsData?.tenants
+      if (Array.isArray(tenantList)) setTenantStats(tenantList)
     } catch (err: any) {
       setError(err?.message || "Error desconocido al cargar informes del sistema")
       console.error("Error loading system reports:", err)
@@ -86,7 +85,7 @@ export function SystemReportsView() {
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         <Card
-          onClick={navigateTo("/tenants")}
+          onClick={navigateTo("tenants")}
           className="cursor-pointer hover:bg-muted/50 transition-colors"
         >
           <CardHeader>
@@ -95,7 +94,7 @@ export function SystemReportsView() {
           <CardContent>{overview?.totalTenants ?? 0}</CardContent>
         </Card>
         <Card
-          onClick={navigateTo("/adminRequests")}
+          onClick={navigateTo("adminRequests")}
           className="cursor-pointer hover:bg-muted/50 transition-colors"
         >
           <CardHeader>
@@ -104,7 +103,7 @@ export function SystemReportsView() {
           <CardContent>{overview?.totalUsers ?? 0}</CardContent>
         </Card>
         <Card
-          onClick={navigateTo("/rooms")}
+          onClick={navigateTo("rooms")}
           className="cursor-pointer hover:bg-muted/50 transition-colors"
         >
           <CardHeader>
@@ -113,7 +112,7 @@ export function SystemReportsView() {
           <CardContent>{overview?.totalRooms ?? 0}</CardContent>
         </Card>
         <Card
-          onClick={navigateTo("/calendar")}
+          onClick={navigateTo("calendar")}
           className="cursor-pointer hover:bg-muted/50 transition-colors"
         >
           <CardHeader>
@@ -122,7 +121,7 @@ export function SystemReportsView() {
           <CardContent>{overview?.totalReservations ?? 0}</CardContent>
         </Card>
         <Card
-          onClick={navigateTo("/reports")}
+          onClick={navigateTo("reports")}
           className="cursor-pointer hover:bg-muted/50 transition-colors"
         >
           <CardHeader>

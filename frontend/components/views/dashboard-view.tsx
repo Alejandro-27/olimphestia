@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
@@ -43,7 +42,7 @@ const chartConfig = {
   },
 } satisfies ChartConfig
 
-export function DashboardView() {
+export function DashboardView({ onNavigate }: { onNavigate: (view: string) => void }) {
   const [dashboard, setDashboard] = useState<DashboardReport | null>(null)
   const [occupancy, setOccupancy] = useState<OccupancyReport | null>(null)
   const [financial, setFinancial] = useState<FinancialReport | null>(null)
@@ -55,10 +54,8 @@ export function DashboardView() {
   const [error, setError] = useState<string | null>(null)
   const [checkingIn, setCheckingIn] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
-  const router = useRouter()
-
-  const navigateTo = (path: string) => () => {
-    router.push(path)
+  const navigateTo = (view: string) => () => {
+    onNavigate(view)
   }
 
   const load = useMemo(
@@ -182,7 +179,7 @@ export function DashboardView() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {/* Occupancy */}
         <Card
-          onClick={navigateTo("/calendar")}
+          onClick={navigateTo("calendar")}
           className="cursor-pointer hover:bg-muted/50 transition-colors"
         >
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -216,7 +213,7 @@ export function DashboardView() {
 
         {/* Daily Revenue */}
         <Card
-          onClick={navigateTo("/reports")}
+          onClick={navigateTo("reports")}
           className="cursor-pointer hover:bg-muted/50 transition-colors"
         >
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -237,7 +234,7 @@ export function DashboardView() {
 
         {/* Pending Check-ins */}
         <Card
-          onClick={navigateTo("/guests")}
+          onClick={navigateTo("guests")}
           className="cursor-pointer hover:bg-muted/50 transition-colors"
         >
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -265,7 +262,7 @@ export function DashboardView() {
 
         {/* Inventory Alerts */}
         <Card
-          onClick={navigateTo("/pos")}
+          onClick={navigateTo("pos")}
           className="cursor-pointer hover:bg-muted/50 transition-colors"
         >
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -294,7 +291,7 @@ export function DashboardView() {
       {/* Room Status Summary */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Card
-          onClick={navigateTo("/rooms")}
+          onClick={navigateTo("rooms")}
           className="border-emerald-200/60 cursor-pointer hover:bg-emerald-50/50 transition-colors"
         >
           <CardContent className="pt-5 pb-4 flex items-center gap-3">
@@ -308,7 +305,7 @@ export function DashboardView() {
           </CardContent>
         </Card>
         <Card
-          onClick={navigateTo("/rooms")}
+          onClick={navigateTo("rooms")}
           className="border-primary/20 cursor-pointer hover:bg-primary/50 transition-colors"
         >
           <CardContent className="pt-5 pb-4 flex items-center gap-3">
@@ -322,7 +319,7 @@ export function DashboardView() {
           </CardContent>
         </Card>
         <Card
-          onClick={navigateTo("/rooms")}
+          onClick={navigateTo("rooms")}
           className="border-sky-200/60 cursor-pointer hover:bg-sky-50/50 transition-colors"
         >
           <CardContent className="pt-5 pb-4 flex items-center gap-3">
@@ -336,7 +333,7 @@ export function DashboardView() {
           </CardContent>
         </Card>
         <Card
-          onClick={navigateTo("/rooms")}
+          onClick={navigateTo("rooms")}
           className="border-amber-200/60 cursor-pointer hover:bg-amber-50/50 transition-colors"
         >
           <CardContent className="pt-5 pb-4 flex items-center gap-3">

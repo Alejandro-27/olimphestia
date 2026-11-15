@@ -265,7 +265,7 @@ export default async function authRoutes(app: FastifyInstance) {
   typedApp.get('/api/auth/system-reports/tenants', {
     preHandler: [app.requireSuperAdmin],
   }, async () => {
-    return getTenantsWithStats()
+    return { tenants: await getTenantsWithStats() }
   })
 
   /* ---------- Crear recepción ---------- */

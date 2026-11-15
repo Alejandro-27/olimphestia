@@ -21,6 +21,7 @@ dist/
 
 # Debug logs
 pnpm-debug.log*
+.playwright-mcp/
 
 # OS
 .DS_Store

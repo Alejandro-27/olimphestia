@@ -107,7 +107,7 @@ export default function Page() {
 
         {/* Main Content */}
         <main id="contenido-principal" tabIndex={-1} className="flex-1 overflow-auto p-4 lg:p-6">
-          {activeView === "dashboard" && <DashboardView />}
+          {activeView === "dashboard" && <DashboardView onNavigate={setActiveView} />}
           {activeView === "calendar" && <CalendarView />}
           {activeView === "guests" && <GuestsView />}
           {activeView === "pos" && <PosView />}
@@ -118,7 +118,7 @@ export default function Page() {
           {activeView === "adminRequests" && <AdminRequestsView />}
           {activeView === "tenants" && <TenantsView />}
           {activeView === "recepcionCreate" && <RecepcionCreateView />}
-          {activeView === "systemReports" && <SystemReportsView />}
+          {activeView === "systemReports" && <SystemReportsView onNavigate={setActiveView} />}
 
           <footer className="mt-8 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 border-t pt-4 text-xs text-muted-foreground">
             <span>&copy; {new Date().getFullYear()} {user.tenantName?.trim() || "HotelManager"}</span>
