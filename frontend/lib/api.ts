@@ -42,6 +42,7 @@ export interface TenantInfo {
   id: string
   name: string
   slug: string
+  status: string
 }
 
 export interface SystemOverview {
@@ -85,6 +86,7 @@ export interface CreateTenantInput {
 export interface UpdateTenantInput {
   name?: string
   slug?: string
+  status?: string
 }
 
 export interface CreateRecepcionInput {

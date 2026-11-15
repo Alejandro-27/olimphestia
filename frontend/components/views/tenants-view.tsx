@@ -32,6 +32,7 @@ import {
   Edit,
   ShieldAlert,
   Loader2,
+  AlertCircle,
 } from "lucide-react"
 import { toast } from "@/components/ui/use-toast"
 import { api } from "@/lib/api"
@@ -40,6 +41,7 @@ import type { TenantInfo, CreateTenantInput, UpdateTenantInput } from "@/lib/api
 function StatusBadge({ status }: { status: string }) {
   const variants: Record<string, string> = {
     activo: "bg-emerald-100 text-emerald-800 border-emerald-200",
+    inactivo: "bg-slate-100 text-slate-600 border-slate-200",
   }
   return (
     <Badge variant="secondary" className={variants[status] || "border-none"}>
@@ -52,6 +54,7 @@ export function TenantsView() {
   const [tenants, setTenants] = useState<TenantInfo[]>([])
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [toggleSaving, setToggleSaving] = useState<string | null>(null)
   const [openDialog, setOpenDialog] = useState(false)
   const [openEditDialog, setOpenEditDialog] = useState(false)
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false)
@@ -120,6 +123,27 @@ export function TenantsView() {
       })
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleToggleStatus = async (tenantId: string, currentStatus: string) => {
+    const newStatus = currentStatus === "activo" ? "inactivo" : "activo"
+    setToggleSaving(tenantId)
+    try {
+      await api.auth.updateTenant(tenantId, { status: newStatus })
+      toast({
+        title: "Hotel actualizado",
+        description: newStatus === "activo" ? "Hotel activado" : "Hotel desactivado",
+      })
+      fetchTenants()
+    } catch (err) {
+      toast({
+        title: "Error al cambiar estado",
+        description: err instanceof Error ? err.message : "Intente de nuevo",
+        variant: "destructive",
+      })
+    } finally {
+      setToggleSaving(null)
     }
   }
 
@@ -196,9 +220,31 @@ export function TenantsView() {
                 <TableCell className="font-medium">{tenant.name}</TableCell>
                 <TableCell className="font-mono text-sm">{tenant.slug}</TableCell>
                 <TableCell>
-                  <StatusBadge status="activo" />
+                  <StatusBadge status={tenant.status ?? "activo"} />
                 </TableCell>
                 <TableCell className="text-right">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleToggleStatus(tenant.id, tenant.status ?? "activo")}
+                    disabled={toggleSaving === tenant.id}
+                  >
+                    {toggleSaving === tenant.id ? (
+                      <Loader2 className="mr-2 h-3 w-3" />
+                    ) : (
+                      tenant.status === "activo" ? (
+                        <>
+                          <AlertCircle className="mr-2 h-3 w-3" />
+                          Desactivar
+                        </>
+                      ) : (
+                        <>
+                          <Building2 className="mr-2 h-3 w-3" />
+                          Activar
+                        </>
+                      )
+                    )}
+                  </Button>
                   <Button
                     size="sm"
                     variant="outline"

@@ -340,8 +340,8 @@ export async function rejectRequest(userId: string): Promise<void> {
   }).where(eq(users.id, userId))
 }
 
-export async function listTenants(): Promise<{ id: string; name: string; slug: string }[]> {
-  return db.select({ id: tenants.id, name: tenants.name, slug: tenants.slug }).from(tenants)
+export async function listTenants(): Promise<{ id: string; name: string; slug: string; status: string }[]> {
+  return db.select({ id: tenants.id, name: tenants.name, slug: tenants.slug, status: tenants.status }).from(tenants)
 }
 
 export async function updateTenant(tenantId: string, input: UpdateTenantInput): Promise<void> {
@@ -351,6 +351,7 @@ export async function updateTenant(tenantId: string, input: UpdateTenantInput): 
   const changes: Record<string, string> = {}
   if (input.name !== undefined) changes.name = input.name
   if (input.slug !== undefined) changes.slug = input.slug
+  if (input.status !== undefined) changes.status = input.status
   changes.updatedAt = new Date().toISOString()
 
   if (Object.keys(changes).length > 1) {

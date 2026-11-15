@@ -5,6 +5,7 @@ export const tenants = pgTable('tenants', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   slug: text('slug').notNull().unique(),
+  status: text('status', { enum: ['activo', 'inactivo'] }).notNull().default('activo'),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
 })

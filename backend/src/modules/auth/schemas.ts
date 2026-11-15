@@ -42,6 +42,7 @@ export const createTenantSchema = z.object({
 export const updateTenantSchema = z.object({
   name: z.string().min(2, 'Nombre del hotel requerido').optional(),
   slug: z.string().min(2, 'Slug requerido').regex(/^[a-z0-9-]+$/, 'Slug inválido (solo minúsculas, números y guiones)').optional(),
+  status: z.enum(['activo', 'inactivo']).optional(),
 })
 
 export const createRecepcionSchema = z.object({
