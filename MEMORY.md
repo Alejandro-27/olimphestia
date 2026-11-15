@@ -14,8 +14,9 @@ Documento de **estado dinámico** del proyecto. Complementa a `AGENTS.md` (conve
 
 ## Snapshot actual
 
-- Fecha: 2026-11-15 · Rama: `main` · Último commit: navegación por `activeView` + estado de hoteles (pendiente de push)
-- **Pendiente**: redesplegar backend en Render (Manual Deploy) con los commits `584e575`/`879ceba`; Cloudflare Pages ya auto-despliega desde `main` (el `wrangler.toml` inválido de la raíz era lo que rompía los deploys)
+- Fecha: 2026-11-15 · Rama: `main` · Último commit: `c36d907` (hotel del superadmin marcado como “Sistema”)
+- **Pendiente**: redesplegar backend en Render (Manual Deploy) con los commits `584e575`/`879ceba`/`c36d907`; Cloudflare Pages ya auto-despliega desde `main` (el `wrangler.toml` inválido de la raíz era lo que rompía los deploys)
+- **Hotel del superadmin**: `tenant_default` (“Hotel Principal Edit”) aloja al superadmin y **no se puede desactivar** (el backend responde 400). `listTenants` devuelve `hasSuperadmin` y la UI muestra un badge “Sistema” en lugar del botón. Los hoteles reales (p. ej. “Punta Arena”) sí se desactivan.
 - Código fuente: `tsc` limpio en frontend y backend; `pnpm test` **71/71** frontend OK
 - **Datos**: insertada fila `settings` para el hotel Punta Arena en Neon (el 500 de `/api/settings` era por ausencia de fila); `updateSettings` ahora hace upsert.
 - **Navegación SPA**: las vistas se cambian con `activeView`/`onNavigate`; `DashboardView` y `SystemReportsView` ya no usan `router.push` (causaba 404 en Cloudflare Pages porque `/calendar`, `/reports`, etc. no existen como archivos). El `_redirects` solo vive en `frontend/public/` (se copia a `out/`); se eliminaron `wrangler.toml` y `_redirects` de la raíz (el `wrangler.toml` era inválido y rompía el deploy).
@@ -66,6 +67,8 @@ Documento de **estado dinámico** del proyecto. Complementa a `AGENTS.md` (conve
 
 ## Log de cambios recientes (podar lo viejo)
 
+- `c36d907` fix(tenants): `listTenants` devuelve `hasSuperadmin`; la UI marca el hotel del superadmin como “Sistema” y oculta el toggle (el 400 era intencional: evita dejar el sistema sin superadmin)
+- `815c3ac` feat: navegación por `activeView` (sin 404), informes del sistema y estado de hoteles
 - `8812eba` feat(multitenant): tenants por hotel, aprobación manual de cuentas, rol pendiente por defecto, tenant_id en todas las tablas, índices optimizados, endpoints de administración de solicitudes y recepciones
 - (sin commit) ci: eliminado workflow `wake-render.yml` de GitHub Actions; ahora el backend de Render se despierta con cron-job.org (`GET` a `https://olimphestia.onrender.com` cada 5 min)
 - (sin commit) habitaciones: ocupacion derivada de reservas (checkOut > hoy, liberacion al terminar), huesped actual en Gestion de Habitaciones y bloqueo de documento/email/telefono duplicados; efectivo recibido con cambio en anticipo de reserva y pago de factura
