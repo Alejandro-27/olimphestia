@@ -15,8 +15,9 @@ Documento de **estado dinámico** del proyecto. Complementa a `AGENTS.md` (conve
 ## Snapshot actual
 
 - Fecha: 2026-11-15 · Rama: `main` · Último commit: navegación por `activeView` + estado de hoteles (pendiente de push)
-- **Pendiente**: desplegar frontend en Cloudflare Pages y backend en Render con los cambios más recientes; verificar login como superadmin en producción; ejecutar pnpm test:api contra BD real
+- **Pendiente**: redesplegar backend en Render (Manual Deploy) con los commits `584e575`/`879ceba`; Cloudflare Pages ya auto-despliega desde `main` (el `wrangler.toml` inválido de la raíz era lo que rompía los deploys)
 - Código fuente: `tsc` limpio en frontend y backend; `pnpm test` **71/71** frontend OK
+- **Datos**: insertada fila `settings` para el hotel Punta Arena en Neon (el 500 de `/api/settings` era por ausencia de fila); `updateSettings` ahora hace upsert.
 - **Navegación SPA**: las vistas se cambian con `activeView`/`onNavigate`; `DashboardView` y `SystemReportsView` ya no usan `router.push` (causaba 404 en Cloudflare Pages porque `/calendar`, `/reports`, etc. no existen como archivos). El `_redirects` solo vive en `frontend/public/` (se copia a `out/`); se eliminaron `wrangler.toml` y `_redirects` de la raíz (el `wrangler.toml` era inválido y rompía el deploy).
 - **Informes del Sistema**: el backend devuelve `{ tenants }` y el frontend acepta también el formato antiguo (array); la vista tolera fallos de sesión sin romper el render.
 - **Playwright MCP operativo**: Chromium instalado en `~/.cache/ms-playwright` y MCP configurado con `--executable-path` (sin sudo). Sirve para reproducir 404, revisar consola y validar navegación.
