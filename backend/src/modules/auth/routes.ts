@@ -122,13 +122,14 @@ export default async function authRoutes(app: FastifyInstance) {
       return
     }
 
+    const user = await getMe(payload.sub)
+
     const rotated = await rotateRefreshSession(payload.jti, payload.sub)
     if (!rotated) {
       reply.code(401).send({ error: 'Sesión expirada' })
       return
     }
 
-    const user = await getMe(payload.sub)
     await issueSession(reply, { id: user.id, name: user.name, email: user.email, role: user.role, status: user.status, tenantId: user.tenantId })
     reply.send({ user })
   })

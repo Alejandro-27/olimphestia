@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { asc, eq, sql } from 'drizzle-orm'
+import { and, asc, eq, sql } from 'drizzle-orm'
 import bcrypt from 'bcryptjs'
 import { db } from '../../db/index.js'
 import { refreshSessions, tenants, users, rooms, reservations, sales } from '../../db/schema.js'
@@ -121,9 +121,12 @@ export async function login(input: LoginInput): Promise<PublicUser> {
 
   loginAttempts.delete(key)
 
-  const tenantName = user.tenantId
-    ? (await db.select({ name: tenants.name }).from(tenants).where(eq(tenants.id, user.tenantId)).limit(1))[0]?.name ?? null
+  const tenant = user.tenantId
+    ? (await db.select({ name: tenants.name, status: tenants.status }).from(tenants).where(eq(tenants.id, user.tenantId)).limit(1))[0]
     : null
+  if (tenant?.status === 'inactivo') {
+    throw new AppError(403, 'El hotel está desactivado. Contacte con el administrador del sistema')
+  }
 
   return toPublicUser({
     id: user.id,
@@ -132,7 +135,7 @@ export async function login(input: LoginInput): Promise<PublicUser> {
     role: user.role,
     status: user.status,
     tenantId: user.tenantId,
-    tenantName,
+    tenantName: tenant?.name ?? null,
     termsAcceptedAt: user.termsAcceptedAt,
   })
 }
@@ -159,9 +162,12 @@ export async function getMe(userId: string): Promise<PublicUser> {
   const user = (await db.select().from(users).where(eq(users.id, userId)).limit(1))[0]
   if (!user) throw new AppError(404, 'Usuario no encontrado')
 
-  const tenantName = user.tenantId
-    ? (await db.select({ name: tenants.name }).from(tenants).where(eq(tenants.id, user.tenantId)).limit(1))[0]?.name ?? null
+  const tenant = user.tenantId
+    ? (await db.select({ name: tenants.name, status: tenants.status }).from(tenants).where(eq(tenants.id, user.tenantId)).limit(1))[0]
     : null
+  if (tenant?.status === 'inactivo') {
+    throw new AppError(403, 'El hotel está desactivado. Contacte con el administrador del sistema')
+  }
 
   return toPublicUser({
     id: user.id,
@@ -170,7 +176,7 @@ export async function getMe(userId: string): Promise<PublicUser> {
     role: user.role,
     status: user.status,
     tenantId: user.tenantId,
-    tenantName,
+    tenantName: tenant?.name ?? null,
     termsAcceptedAt: user.termsAcceptedAt,
   })
 }
@@ -353,6 +359,17 @@ export async function updateTenant(tenantId: string, input: UpdateTenantInput): 
   if (input.slug !== undefined) changes.slug = input.slug
   if (input.status !== undefined) changes.status = input.status
   changes.updatedAt = new Date().toISOString()
+
+  if (input.status === 'inactivo') {
+    const superadmins = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(and(eq(users.tenantId, tenantId), eq(users.role, 'superadmin')))
+      .limit(1)
+    if (superadmins.length > 0) {
+      throw new AppError(400, 'No se puede desactivar el hotel del superadministrador')
+    }
+  }
 
   if (Object.keys(changes).length > 1) {
     await db.update(tenants).set(changes).where(eq(tenants.id, tenantId))
