@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { api, ApiError, onSessionExpired, emitSessionExpired } from './api'
+import { api, ApiError, onSessionExpired, emitSessionExpired, clearGetCache } from './api'
 
 const mockFetch = vi.fn()
 global.fetch = mockFetch as unknown as typeof fetch
@@ -10,6 +10,7 @@ function jsonResponse(body: unknown, status: number) {
 
 beforeEach(() => {
   mockFetch.mockReset()
+  clearGetCache()
 })
 
 describe('ApiError', () => {
@@ -74,8 +75,7 @@ describe('Content-Type en peticiones', () => {
   })
 })
 
-describe('evento de sesión expirada y refresh', () => {
-  it('dispara session-expired al recibir 401 en endpoint protegido y no poder refrescar', async () => {
+describe('evento de sesión expirada y refresh', () => {  it('dispara session-expired al recibir 401 en endpoint protegido y no poder refrescar', async () => {
     const listener = vi.fn()
     const off = onSessionExpired(listener)
 
@@ -133,5 +133,32 @@ describe('evento de sesión expirada y refresh', () => {
     emitSessionExpired()
     expect(listener).toHaveBeenCalledTimes(1)
     off()
+  })
+})
+
+describe('caché de GETs', () => {
+  it('reutiliza la respuesta reciente y deduplica peticiones en vuelo', async () => {
+    mockFetch.mockResolvedValue(jsonResponse([{ id: 'r1' }], 200))
+
+    const [first, second] = await Promise.all([api.rooms.get(), api.rooms.get()])
+    await api.rooms.get()
+
+    expect(first).toEqual([{ id: 'r1' }])
+    expect(second).toEqual([{ id: 'r1' }])
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('invalida la caché tras una mutación', async () => {
+    mockFetch.mockResolvedValue(jsonResponse([{ id: 'r1' }], 200))
+    await api.rooms.get()
+
+    mockFetch.mockResolvedValue(jsonResponse({ ok: true }, 200))
+    await api.reservations.cancel('res1')
+
+    mockFetch.mockResolvedValue(jsonResponse([{ id: 'r2' }], 200))
+    const refreshed = await api.rooms.get()
+
+    expect(refreshed).toEqual([{ id: 'r2' }])
+    expect(mockFetch).toHaveBeenCalledTimes(3)
   })
 })

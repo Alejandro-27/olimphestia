@@ -6,6 +6,7 @@ import { refreshSessions, tenants, users, rooms, reservations, sales } from '../
 import { AppError } from '../../plugins/error-handler.js'
 import type { LoginInput, RegisterInput, UpdateProfileInput, UpdateTenantInput } from './schemas.js'
 import type { AuthUser } from '../../plugins/auth.js'
+import { CACHE_TTL, cached } from '../../lib/cache.js'
 
 export interface PublicUser {
   id: string
@@ -346,7 +347,7 @@ export async function rejectRequest(userId: string): Promise<void> {
   }).where(eq(users.id, userId))
 }
 
-export async function listTenants(): Promise<{ id: string; name: string; slug: string; status: string; hasSuperadmin: boolean }[]> {
+async function loadTenants(): Promise<{ id: string; name: string; slug: string; status: string; hasSuperadmin: boolean }[]> {
   return db.select({
     id: tenants.id,
     name: tenants.name,
@@ -420,7 +421,7 @@ export interface TenantStats {
   revenue: number
 }
 
-export async function getSystemOverview(): Promise<SystemOverview> {
+async function loadSystemOverview(): Promise<SystemOverview> {
   const [tenantCount, userCount, activeUserCount, pendingUserCount] = await Promise.all([
     db.select({ count: sql<number>`count(*)` }).from(tenants),
     db.select({ count: sql<number>`count(*)` }).from(users),
@@ -457,28 +458,41 @@ export async function getSystemOverview(): Promise<SystemOverview> {
   }
 }
 
-export async function getTenantsWithStats(): Promise<TenantStats[]> {
-  const tenantList = await db.select({ id: tenants.id, name: tenants.name, slug: tenants.slug }).from(tenants)
+async function loadTenantsWithStats(): Promise<TenantStats[]> {
+  const [tenantList, userCounts, roomCounts, reservationCounts, revenueRows] = await Promise.all([
+    db.select({ id: tenants.id, name: tenants.name, slug: tenants.slug }).from(tenants),
+    db.select({ tenantId: users.tenantId, count: sql<number>`count(*)` }).from(users).groupBy(users.tenantId),
+    db.select({ tenantId: rooms.tenantId, count: sql<number>`count(*)` }).from(rooms).groupBy(rooms.tenantId),
+    db.select({ tenantId: reservations.tenantId, count: sql<number>`count(*)` }).from(reservations).groupBy(reservations.tenantId),
+    db.select({ tenantId: sales.tenantId, revenue: sql<number>`coalesce(sum(${sales.total}), 0)` }).from(sales).groupBy(sales.tenantId),
+  ])
 
-  const result = await Promise.all(tenantList.map(async (t) => {
-    const [userCount] = await db.select({ count: sql<number>`count(*)` }).from(users).where(eq(users.tenantId, t.id))
-    const [roomCount] = await db.select({ count: sql<number>`count(*)` }).from(rooms).where(eq(rooms.tenantId, t.id))
-    const [resCount] = await db.select({ count: sql<number>`count(*)` }).from(reservations).where(eq(reservations.tenantId, t.id))
-    const [revenueResult] = await db.select({
-      revenue: sql<number>`coalesce(sum(${sales.total}), 0)`,
-    }).from(sales).where(eq(sales.tenantId, t.id))
+  const toMap = <T extends { tenantId: string | null }>(rows: T[], value: (row: T) => number) =>
+    new Map(rows.map((row) => [row.tenantId ?? '', value(row)]))
+  const usersByTenant = toMap(userCounts, (row) => Number(row.count))
+  const roomsByTenant = toMap(roomCounts, (row) => Number(row.count))
+  const reservationsByTenant = toMap(reservationCounts, (row) => Number(row.count))
+  const revenueByTenant = toMap(revenueRows, (row) => Number(row.revenue))
 
-    return {
-      id: t.id,
-      name: t.name,
-      slug: t.slug,
-      userCount: Number(userCount?.count ?? 0),
-      roomCount: Number(roomCount?.count ?? 0),
-      reservationCount: Number(resCount?.count ?? 0),
-      revenue: Number(revenueResult?.revenue ?? 0),
-    }
+  return tenantList.map((t) => ({
+    id: t.id,
+    name: t.name,
+    slug: t.slug,
+    userCount: usersByTenant.get(t.id) ?? 0,
+    roomCount: roomsByTenant.get(t.id) ?? 0,
+    reservationCount: reservationsByTenant.get(t.id) ?? 0,
+    revenue: revenueByTenant.get(t.id) ?? 0,
   }))
-
-  return result
 }
 
+export function listTenants() {
+  return cached('system:tenants', CACHE_TTL.report, () => loadTenants())
+}
+
+export function getSystemOverview() {
+  return cached('system:overview', CACHE_TTL.report, () => loadSystemOverview())
+}
+
+export function getTenantsWithStats() {
+  return cached('system:tenants-stats', CACHE_TTL.report, () => loadTenantsWithStats())
+}

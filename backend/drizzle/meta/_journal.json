@@ -5,43 +5,15 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1786837663976,
-      "tag": "0000_safe_patch",
+      "when": 1794242774338,
+      "tag": "0000_baseline",
       "breakpoints": true
     },
     {
       "idx": 1,
       "version": "7",
-      "when": 1790279889289,
-      "tag": "0001_great_timeslip",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1790368947572,
-      "tag": "0002_spicy_luminals",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1790799297870,
-      "tag": "0003_thick_spiral",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1790960962306,
-      "tag": "0004_eager_juggernaut",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1794242774338,
-      "tag": "0005_lumpy_prowler",
+      "when": 1794300000000,
+      "tag": "0001_perf_indexes",
       "breakpoints": true
     }
   ]

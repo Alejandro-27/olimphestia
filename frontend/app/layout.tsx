@@ -3,14 +3,33 @@ import { Geist, Geist_Mono } from 'next/font/google'
 import { ThemeProvider } from '@/components/theme-provider'
 import { AuthProvider } from '@/lib/auth-context'
 import { Toaster } from '@/components/ui/sonner'
+import { SITE_NAME, SITE_URL } from '@/lib/seo'
 import './globals.css'
 
 const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'HotelManager - PMS & POS',
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: 'HotelManager - PMS & POS',
+    template: `%s | ${SITE_NAME}`,
+  },
   description: 'Sistema de gestion hotelera y punto de venta para catering',
+  robots: { index: false, follow: false },
+  openGraph: {
+    type: 'website',
+    locale: 'es_ES',
+    siteName: SITE_NAME,
+    title: 'HotelManager - PMS & POS',
+    description: 'Sistema de gestion hotelera y punto de venta para catering',
+    url: '/',
+  },
+  twitter: {
+    card: 'summary',
+    title: 'HotelManager - PMS & POS',
+    description: 'Sistema de gestion hotelera y punto de venta para catering',
+  },
   icons: {
     icon: [
       {

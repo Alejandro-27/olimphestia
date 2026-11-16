@@ -1,11 +1,11 @@
-import type { Metadata } from "next"
 import Link from "next/link"
+import { legalMetadata } from "@/lib/seo"
 
-export const metadata: Metadata = {
-  title: "Politica de privacidad",
-  description:
-    "Como tratamos los datos personales de huespedes, usuarios del sistema y consentimiento para su tratamiento.",
-}
+export const metadata = legalMetadata(
+  "Politica de privacidad",
+  "Como tratamos los datos personales de huespedes, usuarios del sistema y consentimiento para su tratamiento.",
+  "/legal/privacidad",
+)
 
 export default function PrivacidadPage() {
   return (

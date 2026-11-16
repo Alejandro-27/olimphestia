@@ -1,13 +1,14 @@
 import { randomUUID } from 'node:crypto'
-import { and, asc, desc, eq, gte, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, inArray, sql } from 'drizzle-orm'
 import type { Product as ProductType } from '@hotel/types'
 import { db } from '../../db/index.js'
 import { products, reservations, rooms, sales, invoices } from '../../db/schema.js'
 import { AppError } from '../../plugins/error-handler.js'
 import { syncInvoiceForReservation } from '../billing/service.js'
 import type { CreateProductInput, CreateSaleInput, UpdateProductInput, UpdateStockInput } from './schemas.js'
+import { CACHE_TTL, cached } from '../../lib/cache.js'
 
-export async function listProducts(tenantId: string, category?: ProductType['category']) {
+async function loadProducts(tenantId: string, category?: ProductType['category']) {
   const conditions = [eq(products.tenantId, tenantId)]
   if (category) conditions.push(eq(products.category, category))
   return db.select().from(products).where(and(...conditions)).orderBy(asc(products.name))
@@ -92,11 +93,14 @@ export async function createSale(tenantId: string, input: CreateSaleInput) {
     let total = 0
     const normalizedItems: { productId: string; quantity: number; unitPrice: number }[] = []
 
+    const productRows = await tx.select().from(products).where(and(
+      eq(products.tenantId, tenantId),
+      inArray(products.id, input.items.map((item) => item.productId)),
+    ))
+    const productsById = new Map(productRows.map((product) => [product.id, product]))
+
     for (const item of input.items) {
-      const product = (await tx.select().from(products).where(and(
-        eq(products.id, item.productId),
-        eq(products.tenantId, tenantId),
-      )).limit(1))[0]
+      const product = productsById.get(item.productId)
       if (!product) {
         throw new AppError(404, `Producto ${item.productId} no encontrado`)
       }
@@ -152,4 +156,8 @@ export async function listSales(tenantId: string, date?: string) {
   const conditions = [eq(sales.tenantId, tenantId)]
   if (date) conditions.push(eq(sales.date, date))
   return db.select().from(sales).where(and(...conditions)).orderBy(desc(sales.createdAt))
+}
+
+export function listProducts(tenantId: string, category?: ProductType['category']) {
+  return cached(`products:${tenantId}:${category ?? ''}`, CACHE_TTL.list, () => loadProducts(tenantId, category))
 }

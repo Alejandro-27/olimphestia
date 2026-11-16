@@ -5,6 +5,7 @@ import { db } from '../../db/index.js'
 import { reservations, rooms } from '../../db/schema.js'
 import { AppError } from '../../plugins/error-handler.js'
 import type { CreateRoomInput, UpdateRoomInput, UpdateRoomStatusInput } from './schemas.js'
+import { CACHE_TTL, cached } from '../../lib/cache.js'
 
 export interface RoomFilters {
   status?: RoomStatus
@@ -28,7 +29,7 @@ export async function getOccupiedRoomIds(tenantId: string): Promise<Set<string>>
   return new Set(active.map((row) => row.roomId))
 }
 
-export async function listRooms(tenantId: string, filters: RoomFilters = {}) {
+async function loadRooms(tenantId: string, filters: RoomFilters = {}) {
   const occupied = await getOccupiedRoomIds(tenantId)
 
   const rows = (await db.select().from(rooms).where(eq(rooms.tenantId, tenantId))).map((room) =>
@@ -98,4 +99,9 @@ export async function updateRoomStatus(tenantId: string, id: string, input: Upda
       eq(rooms.tenantId, tenantId),
     ))
   return getRoomById(tenantId, id)
+}
+
+export function listRooms(tenantId: string, filters: RoomFilters = {}) {
+  const key = `rooms:${tenantId}:${filters.status ?? ''}:${filters.type ?? ''}:${filters.floor ?? ''}`
+  return cached(key, CACHE_TTL.list, () => loadRooms(tenantId, filters))
 }

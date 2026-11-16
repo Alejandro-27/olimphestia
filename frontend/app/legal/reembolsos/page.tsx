@@ -1,9 +1,10 @@
-import type { Metadata } from "next"
+import { legalMetadata } from "@/lib/seo"
 
-export const metadata: Metadata = {
-  title: "Cancelacion y reembolsos",
-  description: "Politica de cancelacion de reservas y reembolsos aplicable a las estancias.",
-}
+export const metadata = legalMetadata(
+  "Cancelacion y reembolsos",
+  "Politica de cancelacion de reservas y reembolsos aplicable a las estancias.",
+  "/legal/reembolsos",
+)
 
 export default function ReembolsosPage() {
   return (

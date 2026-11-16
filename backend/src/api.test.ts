@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import { eq } from 'drizzle-orm'
 import { buildApp } from './app.js'
+import { env } from './config/env.js'
 import { db } from './db/index.js'
 import { users } from './db/schema.js'
 
@@ -311,7 +312,7 @@ describe('expenses', () => {
       url: `/api/expenses/${expenseId}`,
       headers: { authorization: `Bearer ${adminToken}` },
     })
-    expect(del.statusCode).toBe(200)
+    expect(del.statusCode).toBe(204)
 
     const delAgain = await app.inject({
       method: 'DELETE',
@@ -344,6 +345,21 @@ describe('expenses', () => {
     const report = res.json() as { monthlyRevenue: { month: string; gastos: number }[] }
     const current = report.monthlyRevenue.find((m) => m.month === currentMonthLabel)
     expect(current?.gastos).toBe(3000)
+  })
+
+  it('el dashboard agrega habitaciones, ocupación e ingresos del día', async () => {
+    const token = await loginAsAdmin()
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/reports/dashboard',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.statusCode).toBe(200)
+    const report = res.json() as { occupancyRate: number; dailyRevenue: number; pendingCheckins: unknown[] }
+    expect(report.occupancyRate).toBeGreaterThanOrEqual(0)
+    expect(report.occupancyRate).toBeLessThanOrEqual(100)
+    expect(typeof report.dailyRevenue).toBe('number')
+    expect(Array.isArray(report.pendingCheckins)).toBe(true)
   })
 
   it('valida el parametro months', async () => {
@@ -978,18 +994,19 @@ describe('factura en curso por cargo a habitacion', () => {
 
 describe('cors', () => {
   it('acepta un origin con barra final', async () => {
+    const allowedOrigin = `${env.corsOrigin[0]}/`
     const res = await app.inject({
       method: 'OPTIONS',
       url: '/api/guests/123',
       headers: {
-        origin: 'http://localhost:3000/',
+        origin: allowedOrigin,
         'access-control-request-method': 'PATCH',
         'access-control-request-headers': 'authorization, content-type',
       },
     })
 
     expect(res.statusCode).toBe(204)
-    expect(res.headers['access-control-allow-origin']).toBe('http://localhost:3000/')
+    expect(res.headers['access-control-allow-origin']).toBe(allowedOrigin)
     expect(res.headers['access-control-allow-methods']).toContain('PATCH')
   })
 })

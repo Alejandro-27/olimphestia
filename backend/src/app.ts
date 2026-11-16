@@ -16,6 +16,7 @@ import expenseRoutes from './modules/expenses/routes.js'
 import settingsRoutes from './modules/settings/routes.js'
 import reportRoutes from './modules/reports/routes.js'
 import { env } from './config/env.js'
+import { cacheClear } from './lib/cache.js'
 
 const normalizeOrigin = (value?: string) => value?.replace(/\/+$/, '') ?? value
 
@@ -64,7 +65,18 @@ export function buildApp() {
 
     if (req.url.startsWith('/api/auth')) {
       reply.header('Cache-Control', 'no-store')
+    } else if (req.method === 'GET' && req.url === '/health') {
+      reply.header('Cache-Control', 'public, max-age=30, s-maxage=60')
+    } else if (req.method === 'GET' && req.url.startsWith('/api/')) {
+      reply.header('Cache-Control', 'private, max-age=0, must-revalidate')
     }
+  })
+
+  // shortcut: cualquier mutación limpia toda la caché; suficiente con pocas
+  // escrituras y una instancia. Migrar a invalidación por tags si Render escala.
+  app.addHook('onResponse', async (req, reply) => {
+    const mutating = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)
+    if (mutating && reply.statusCode < 400) cacheClear()
   })
 
   app.register(cors, {

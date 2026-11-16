@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
+import dynamic from "next/dynamic"
 import {
   SidebarProvider,
   SidebarInset,
@@ -9,18 +10,6 @@ import {
 } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
 import { LoadingScreen } from "@/components/ui/loading-screen"
-import { DashboardView } from "@/components/views/dashboard-view"
-import { CalendarView } from "@/components/views/calendar-view"
-import { GuestsView } from "@/components/views/guests-view"
-import { PosView } from "@/components/views/pos-view"
-import { BillingView } from "@/components/views/billing-view"
-import { RoomsView } from "@/components/views/rooms-view"
-import { SettingsView } from "@/components/views/settings-view"
-import { ReportsView } from "@/components/views/reports-view"
-import { AdminRequestsView } from "@/components/views/admin-requests-view"
-import { TenantsView } from "@/components/views/tenants-view"
-import { RecepcionCreateView } from "@/components/views/recepcion-create-view"
-import { SystemReportsView } from "@/components/views/system-reports-view"
 import { AuthScreen } from "@/components/auth-screen"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { useAuth } from "@/lib/auth-context"
@@ -31,6 +20,61 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
 } from "@/components/ui/breadcrumb"
+
+const viewFallback = () => (
+  <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">
+    Cargando…
+  </div>
+)
+
+const DashboardView = dynamic(
+  () => import("@/components/views/dashboard-view").then((m) => m.DashboardView),
+  { ssr: false, loading: viewFallback },
+)
+const CalendarView = dynamic(
+  () => import("@/components/views/calendar-view").then((m) => m.CalendarView),
+  { ssr: false, loading: viewFallback },
+)
+const GuestsView = dynamic(
+  () => import("@/components/views/guests-view").then((m) => m.GuestsView),
+  { ssr: false, loading: viewFallback },
+)
+const PosView = dynamic(
+  () => import("@/components/views/pos-view").then((m) => m.PosView),
+  { ssr: false, loading: viewFallback },
+)
+const BillingView = dynamic(
+  () => import("@/components/views/billing-view").then((m) => m.BillingView),
+  { ssr: false, loading: viewFallback },
+)
+const RoomsView = dynamic(
+  () => import("@/components/views/rooms-view").then((m) => m.RoomsView),
+  { ssr: false, loading: viewFallback },
+)
+const SettingsView = dynamic(
+  () => import("@/components/views/settings-view").then((m) => m.SettingsView),
+  { ssr: false, loading: viewFallback },
+)
+const ReportsView = dynamic(
+  () => import("@/components/views/reports-view").then((m) => m.ReportsView),
+  { ssr: false, loading: viewFallback },
+)
+const AdminRequestsView = dynamic(
+  () => import("@/components/views/admin-requests-view").then((m) => m.AdminRequestsView),
+  { ssr: false, loading: viewFallback },
+)
+const TenantsView = dynamic(
+  () => import("@/components/views/tenants-view").then((m) => m.TenantsView),
+  { ssr: false, loading: viewFallback },
+)
+const RecepcionCreateView = dynamic(
+  () => import("@/components/views/recepcion-create-view").then((m) => m.RecepcionCreateView),
+  { ssr: false, loading: viewFallback },
+)
+const SystemReportsView = dynamic(
+  () => import("@/components/views/system-reports-view").then((m) => m.SystemReportsView),
+  { ssr: false, loading: viewFallback },
+)
 
 const viewTitles: Record<string, string> = {
   dashboard: "Panel de Control",

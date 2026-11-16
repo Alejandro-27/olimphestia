@@ -1,5 +1,4 @@
-import { pgTable, text, integer, real, jsonb, boolean } from 'drizzle-orm/pg-core'
-import { sql } from 'drizzle-orm'
+import { pgTable, text, integer, real, jsonb, boolean, index, unique } from 'drizzle-orm/pg-core'
 
 export const tenants = pgTable('tenants', {
   id: text('id').primaryKey(),
@@ -22,7 +21,9 @@ export const users = pgTable('users', {
   termsAcceptedAt: text('terms_accepted_at'),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
-})
+}, (table) => [
+  index('idx_users_tenant_role').on(table.tenantId, table.role),
+])
 
 export const rooms = pgTable('rooms', {
   id: text('id').primaryKey(),
@@ -35,9 +36,10 @@ export const rooms = pgTable('rooms', {
   status: text('status', { enum: ['libre', 'ocupada', 'mantenimiento', 'limpieza'] }).notNull().default('libre'),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
-}, (table) => ({
-  uniq: sql`UNIQUE (${table.tenantId}, ${table.number})`,
-}))
+}, (table) => [
+  unique('rooms_tenant_number_unique').on(table.tenantId, table.number),
+  index('idx_rooms_tenant_status').on(table.tenantId, table.status),
+])
 
 export const guests = pgTable('guests', {
   id: text('id').primaryKey(),
@@ -48,9 +50,9 @@ export const guests = pgTable('guests', {
   email: text('email').notNull(),
   phone: text('phone').notNull(),
   createdAt: text('created_at').notNull(),
-}, (table) => ({
-  uniqDoc: sql`UNIQUE (${table.tenantId}, ${table.document})`,
-}))
+}, (table) => [
+  unique('guests_tenant_document_unique').on(table.tenantId, table.document),
+])
 
 export const reservations = pgTable('reservations', {
   id: text('id').primaryKey(),
@@ -68,7 +70,11 @@ export const reservations = pgTable('reservations', {
   cancellationPolicyAcceptedAt: text('cancellation_policy_accepted_at'),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
-})
+}, (table) => [
+  index('idx_reservations_tenant_dates').on(table.tenantId, table.checkIn, table.checkOut),
+  index('idx_reservations_tenant_status_checkout').on(table.tenantId, table.status, table.checkOut),
+  index('idx_reservations_tenant_room_dates').on(table.tenantId, table.roomId, table.checkIn, table.checkOut),
+])
 
 export const products = pgTable('products', {
   id: text('id').primaryKey(),
@@ -81,7 +87,9 @@ export const products = pgTable('products', {
   image: text('image').notNull().default(''),
   active: boolean('active').notNull().default(true),
   createdAt: text('created_at').notNull(),
-})
+}, (table) => [
+  index('idx_products_tenant_category').on(table.tenantId, table.category),
+])
 
 export const sales = pgTable('sales', {
   id: text('id').primaryKey(),
@@ -93,7 +101,10 @@ export const sales = pgTable('sales', {
   date: text('date').notNull(),
   time: text('time').notNull(),
   createdAt: text('created_at').notNull(),
-})
+}, (table) => [
+  index('idx_sales_tenant_date').on(table.tenantId, table.date),
+  index('idx_sales_tenant_room_date').on(table.tenantId, table.roomId, table.date),
+])
 
 export const invoices = pgTable('invoices', {
   id: text('id').primaryKey(),
@@ -109,7 +120,10 @@ export const invoices = pgTable('invoices', {
   status: text('status', { enum: ['pagada', 'parcial', 'pendiente'] }).notNull().default('pendiente'),
   date: text('date').notNull(),
   createdAt: text('created_at').notNull(),
-})
+}, (table) => [
+  index('idx_invoices_tenant_status').on(table.tenantId, table.status),
+  index('idx_invoices_tenant_reservation').on(table.tenantId, table.reservationId),
+])
 
 export const expenses = pgTable('expenses', {
   id: text('id').primaryKey(),
@@ -119,7 +133,9 @@ export const expenses = pgTable('expenses', {
   date: text('date').notNull(),
   note: text('note').notNull().default(''),
   createdAt: text('created_at').notNull(),
-})
+}, (table) => [
+  index('idx_expenses_tenant_date').on(table.tenantId, table.date),
+])
 
 export const settings = pgTable('settings', {
   tenantId: text('tenant_id').primaryKey().references(() => tenants.id),
@@ -139,7 +155,9 @@ export const refreshSessions = pgTable('refresh_sessions', {
   createdAt: text('created_at').notNull(),
   expiresAt: text('expires_at').notNull(),
   revokedAt: text('revoked_at'),
-})
+}, (table) => [
+  index('idx_refresh_sessions_user').on(table.userId),
+])
 
 export type Tenant = typeof tenants.$inferSelect
 export type NewTenant = typeof tenants.$inferInsert

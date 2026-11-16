@@ -136,12 +136,12 @@ const cateringColors: Record<string, string> = {
   snacks: 'var(--chart-2)',
   bebidas: 'var(--chart-3)',
 }
+const periodMonths: Record<string, number> = { "1m": 1, "3m": 3, "6m": 6, "1y": 12 }
 
 export function ReportsView() {
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin'
   const [period, setPeriod] = useState("6m")
-  const periodMonths: Record<string, number> = { "1m": 1, "3m": 3, "6m": 6, "1y": 12 }
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -172,11 +172,11 @@ export function ReportsView() {
     setPrintRoot(document.body)
   }, [])
 
-  const fetchData = useCallback(async () => {
+  const fetchBaseData = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const base = Promise.all([
+      const [r, g, res, p, s, inv, occ, exp, biz] = await Promise.all([
         api.rooms.get(),
         api.guests.get(),
         api.reservations.get(),
@@ -184,11 +184,9 @@ export function ReportsView() {
         api.sales.get(),
         api.invoices.get(),
         api.reports.occupancy(),
-        isAdmin ? api.reports.financial(periodMonths[period] ?? 6) : Promise.resolve(null),
         isAdmin ? api.expenses.get() : Promise.resolve([] as Expense[]),
         api.settings.get().catch(() => null),
       ])
-      const [r, g, res, p, s, inv, occ, fin, exp, biz] = await base
       setRooms(r)
       setGuests(g)
       setReservations(res)
@@ -196,7 +194,6 @@ export function ReportsView() {
       setSales(s)
       setInvoices(inv)
       setOccupancy(occ)
-      setFinancial(fin)
       setExpenses(exp)
       if (biz) setBusiness(biz)
     } catch (err) {
@@ -204,11 +201,27 @@ export function ReportsView() {
     } finally {
       setLoading(false)
     }
+  }, [isAdmin])
+
+  const fetchFinancial = useCallback(async () => {
+    if (!isAdmin) {
+      setFinancial(null)
+      return
+    }
+    try {
+      setFinancial(await api.reports.financial(periodMonths[period] ?? 6))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al cargar el informe financiero")
+    }
   }, [isAdmin, period])
 
   useEffect(() => {
-    fetchData()
-  }, [fetchData])
+    fetchBaseData()
+  }, [fetchBaseData])
+
+  useEffect(() => {
+    fetchFinancial()
+  }, [fetchFinancial])
 
   const monthlyRevenue = useMemo(
     () => financial?.monthlyRevenue ?? monthlyFromInvoices(invoices),
@@ -344,7 +357,7 @@ export function ReportsView() {
       })
       setExpenseDialogOpen(false)
       setExpenseForm({ category: "servicios", amount: "", date: new Date().toISOString().slice(0, 10), note: "" })
-      fetchData()
+      await fetchBaseData()
     } catch (err) {
       setExpenseError(err instanceof Error ? err.message : "Error al crear el gasto")
     } finally {
@@ -357,7 +370,7 @@ export function ReportsView() {
     setExpenseError(null)
     try {
       await api.expenses.remove(id)
-      fetchData()
+      await fetchBaseData()
     } catch (err) {
       setExpenseError(err instanceof Error ? err.message : "Error al eliminar el gasto")
     } finally {
@@ -450,7 +463,7 @@ export function ReportsView() {
             <AlertCircle className="size-4 shrink-0" aria-hidden="true" />
             <span>{error}</span>
           </div>
-          <Button variant="outline" size="sm" onClick={fetchData}>
+          <Button variant="outline" size="sm" onClick={fetchBaseData}>
             <RefreshCw className="mr-2 size-4" />
             Reintentar
           </Button>

@@ -21,6 +21,7 @@ import {
   RefreshCw,
 } from "lucide-react"
 import { api, type DashboardReport, type OccupancyReport, type FinancialReport } from "@/lib/api"
+import { useAuth } from "@/lib/auth-context"
 import type { Guest, Room, Product } from "@/lib/types"
 import { formatCurrency } from "@/lib/utils"
 import {
@@ -43,6 +44,8 @@ const chartConfig = {
 } satisfies ChartConfig
 
 export function DashboardView({ onNavigate }: { onNavigate: (view: string) => void }) {
+  const { user } = useAuth()
+  const isAdmin = user?.role === 'admin' || user?.role === 'superadmin'
   const [dashboard, setDashboard] = useState<DashboardReport | null>(null)
   const [occupancy, setOccupancy] = useState<OccupancyReport | null>(null)
   const [financial, setFinancial] = useState<FinancialReport | null>(null)
@@ -65,7 +68,7 @@ export function DashboardView({ onNavigate }: { onNavigate: (view: string) => vo
       Promise.all([
         api.reports.dashboard(),
         api.reports.occupancy(),
-        api.reports.financial().catch(() => null),
+        isAdmin ? api.reports.financial().catch(() => null) : Promise.resolve(null),
         api.guests.get(),
         api.rooms.get(),
         api.products.get(),
@@ -83,7 +86,7 @@ export function DashboardView({ onNavigate }: { onNavigate: (view: string) => vo
         .catch((err) => setError(err instanceof Error ? err.message : "Error al cargar los datos"))
         .finally(() => setLoading(false))
     },
-    []
+    [isAdmin]
   )
 
   useEffect(() => {

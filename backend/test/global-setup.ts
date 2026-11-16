@@ -11,10 +11,16 @@ const testDbUrl = process.env.TEST_DATABASE_URL ?? adminUrl.replace(/\/\w+$/, `/
 export default async function globalSetup() {
   const admin = postgres(adminUrl, { max: 5 })
 
-  const existing = await admin`SELECT 1 FROM pg_database WHERE datname = ${testDbName}`
-  if (existing.length === 0) {
-    await admin.unsafe(`CREATE DATABASE ${testDbName}`)
+  if (!/^[a-zA-Z0-9_]+$/.test(testDbName)) {
+    throw new Error(`Nombre de BD de test inválido: ${testDbName}`)
   }
+
+  // Recrear desde cero para que las migraciones se apliquen siempre en limpio.
+  await admin.unsafe(
+    `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '${testDbName}' AND pid <> pg_backend_pid()`
+  )
+  await admin.unsafe(`DROP DATABASE IF EXISTS "${testDbName}"`)
+  await admin.unsafe(`CREATE DATABASE "${testDbName}"`)
   await admin.end()
 
   const client = postgres(testDbUrl, { max: 5 })

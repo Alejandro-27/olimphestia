@@ -1,7 +1,8 @@
-import { and, desc, eq, gte, like, sql } from 'drizzle-orm'
+import { and, desc, eq, gt, gte, inArray, lt, sql } from 'drizzle-orm'
 import { db } from '../../db/index.js'
 import { expenses, invoices, products, reservations, rooms, sales } from '../../db/schema.js'
 import { getOccupiedRoomIds } from '../rooms/service.js'
+import { CACHE_TTL, cached } from '../../lib/cache.js'
 
 function todayStr(): string {
   return new Date().toISOString().slice(0, 10)
@@ -20,27 +21,26 @@ function effectiveStatus(room: { id: string; status: string }, occupiedIds: Set<
   return occupiedIds.has(room.id) ? 'ocupada' : room.status
 }
 
-export async function getDashboard(tenantId: string) {
-  const allRooms = await db.select().from(rooms).where(eq(rooms.tenantId, tenantId))
-  const occupiedIds = await getOccupiedRoomIds(tenantId)
-  const occupied = allRooms.filter(r => effectiveStatus(r, occupiedIds) === 'ocupada').length
-  const occupancyRate = allRooms.length > 0 ? Math.round((occupied / allRooms.length) * 100) : 0
-
+async function loadDashboard(tenantId: string) {
   const today = todayStr()
-  const activeReservations = await db.select().from(reservations).where(and(
-    eq(reservations.tenantId, tenantId),
-    eq(reservations.status, 'checkin'),
-  ))
-  const lodging = activeReservations.reduce((sum, r) => {
-    const room = allRooms.find(x => x.id === r.roomId)
-    return sum + (room?.pricePerNight ?? 0)
-  }, 0)
 
-  const todaySales = await db.select().from(sales).where(and(
-    eq(sales.tenantId, tenantId),
-    eq(sales.date, today),
-  ))
-  const catering = todaySales.reduce((sum, s) => sum + s.total, 0)
+  const [stats] = await db.select({
+    totalRooms: sql<number>`count(distinct ${rooms.id})`,
+    occupiedRooms: sql<number>`count(distinct ${rooms.id}) filter (where ${rooms.status} = 'ocupada' or (${rooms.status} not in ('mantenimiento', 'limpieza') and ${reservations.roomId} is not null))`,
+    lodging: sql<number>`(select coalesce(sum(rm.price_per_night), 0) from ${reservations} r join ${rooms} rm on rm.id = r.room_id where r.tenant_id = ${tenantId} and r.status = 'checkin')`,
+    catering: sql<number>`(select coalesce(sum(s.total), 0) from ${sales} s where s.tenant_id = ${tenantId} and s.date = ${today})`,
+  }).from(rooms)
+    .leftJoin(reservations, and(
+      eq(reservations.roomId, rooms.id),
+      eq(reservations.tenantId, rooms.tenantId),
+      inArray(reservations.status, ['confirmada', 'checkin']),
+      gt(reservations.checkOut, today),
+    ))
+    .where(eq(rooms.tenantId, tenantId))
+
+  const totalRooms = Number(stats?.totalRooms ?? 0)
+  const occupied = Number(stats?.occupiedRooms ?? 0)
+  const occupancyRate = totalRooms > 0 ? Math.round((occupied / totalRooms) * 100) : 0
 
   const pendingCheckins = await db.select()
     .from(reservations)
@@ -50,58 +50,83 @@ export async function getDashboard(tenantId: string) {
     ))
     .orderBy(desc(reservations.checkIn))
 
-  const lowStockProducts = (await db.select().from(products).where(eq(products.tenantId, tenantId)))
-    .filter(p => p.active && p.currentStock < p.minStock)
+  const lowStockProducts = await db.select().from(products).where(and(
+    eq(products.tenantId, tenantId),
+    eq(products.active, true),
+    lt(products.currentStock, products.minStock),
+  ))
 
   return {
     occupancyRate,
-    dailyRevenue: Math.round((lodging + catering) * 100) / 100,
+    dailyRevenue: Math.round((Number(stats?.lodging ?? 0) + Number(stats?.catering ?? 0)) * 100) / 100,
     pendingCheckins,
     lowStockProducts,
   }
 }
 
-export async function getFinancialReport(tenantId: string, months = 6) {
-  const monthly = []
-
-  for (let offset = months - 1; offset >= 0; offset--) {
-    const start = monthStart(offset)
-    const end = monthStart(offset - 1)
-
-    const monthSales = await db.select().from(sales).where(and(
-      eq(sales.tenantId, tenantId),
-      gte(sales.date, start),
-      sql`${sales.date} < ${end}`,
-    ))
-    const monthReservations = await db.select().from(reservations).where(and(
-      eq(reservations.tenantId, tenantId),
-      gte(reservations.checkIn, start),
-      sql`${reservations.checkIn} < ${end}`,
-      eq(reservations.status, 'checkout'),
-    ))
-    const monthExpenses = await db.select().from(expenses).where(and(
-      eq(expenses.tenantId, tenantId),
-      gte(expenses.date, start),
-      sql`${expenses.date} < ${end}`,
-    ))
-
-    const monthIndex = Number(start.slice(5, 7)) - 1
-    monthly.push({
-      month: monthNames[monthIndex],
-      ingresos: Math.round((monthSales.reduce((s, x) => s + x.total, 0) + monthReservations.reduce((s, x) => s + x.totalAmount, 0)) * 100) / 100,
-      gastos: Math.round(monthExpenses.reduce((s, x) => s + x.amount, 0) * 100) / 100,
-    })
+async function loadFinancialReport(tenantId: string, months = 6) {
+  const start = monthStart(months - 1)
+  const end = monthStart(-1)
+  const monthKeys: string[] = []
+  for (let offset = months - 1; offset >= 0; offset -= 1) {
+    monthKeys.push(monthStart(offset).slice(0, 7))
   }
 
-  const totalInvoices = await db.select().from(invoices).where(eq(invoices.tenantId, tenantId))
-  const totalRevenue = totalInvoices.reduce((s, i) => s + i.subtotal, 0)
-  const totalPaid = totalInvoices.reduce((s, i) => s + i.advancePayment, 0)
+  const salesMonth = sql<string>`left(${sales.date}, 7)`
+  const reservationsMonth = sql<string>`left(${reservations.checkIn}, 7)`
+  const expensesMonth = sql<string>`left(${expenses.date}, 7)`
 
-  return { monthlyRevenue: monthly, totalRevenue, totalPaid }
+  const [salesRows, reservationRows, expenseRows, invoiceTotals] = await Promise.all([
+    db.select({ month: salesMonth, total: sql<number>`coalesce(sum(${sales.total}), 0)` })
+      .from(sales)
+      .where(and(eq(sales.tenantId, tenantId), gte(sales.date, start), lt(sales.date, end)))
+      .groupBy(salesMonth),
+    db.select({ month: reservationsMonth, total: sql<number>`coalesce(sum(${reservations.totalAmount}), 0)` })
+      .from(reservations)
+      .where(and(
+        eq(reservations.tenantId, tenantId),
+        eq(reservations.status, 'checkout'),
+        gte(reservations.checkIn, start),
+        lt(reservations.checkIn, end),
+      ))
+      .groupBy(reservationsMonth),
+    db.select({ month: expensesMonth, total: sql<number>`coalesce(sum(${expenses.amount}), 0)` })
+      .from(expenses)
+      .where(and(eq(expenses.tenantId, tenantId), gte(expenses.date, start), lt(expenses.date, end)))
+      .groupBy(expensesMonth),
+    db.select({
+      subtotal: sql<number>`coalesce(sum(${invoices.subtotal}), 0)`,
+      paid: sql<number>`coalesce(sum(${invoices.advancePayment}), 0)`,
+    }).from(invoices).where(eq(invoices.tenantId, tenantId)),
+  ])
+
+  const toMap = (rows: { month: string; total: number }[]) =>
+    new Map(rows.map((row) => [row.month, Number(row.total)]))
+  const salesByMonth = toMap(salesRows)
+  const reservationsByMonth = toMap(reservationRows)
+  const expensesByMonth = toMap(expenseRows)
+
+  const monthlyRevenue = monthKeys.map((key) => ({
+    month: monthNames[Number(key.slice(5, 7)) - 1],
+    ingresos: Math.round(((salesByMonth.get(key) ?? 0) + (reservationsByMonth.get(key) ?? 0)) * 100) / 100,
+    gastos: Math.round((expensesByMonth.get(key) ?? 0) * 100) / 100,
+  }))
+
+  const totals = invoiceTotals[0]
+
+  return {
+    monthlyRevenue,
+    totalRevenue: Number(totals?.subtotal ?? 0),
+    totalPaid: Number(totals?.paid ?? 0),
+  }
 }
 
-export async function getOccupancyReport(tenantId: string) {
-  const allRooms = await db.select().from(rooms).where(eq(rooms.tenantId, tenantId))
+async function loadOccupancyReport(tenantId: string) {
+  const allRooms = await db.select({
+    id: rooms.id,
+    type: rooms.type,
+    status: rooms.status,
+  }).from(rooms).where(eq(rooms.tenantId, tenantId))
   const occupiedIds = await getOccupiedRoomIds(tenantId)
   const total = allRooms.length
   const occupied = allRooms.filter(r => effectiveStatus(r, occupiedIds) === 'ocupada').length
@@ -127,4 +152,16 @@ export async function getOccupancyReport(tenantId: string) {
     byType,
     byStatus,
   }
+}
+
+export function getDashboard(tenantId: string) {
+  return cached(`reports:dashboard:${tenantId}`, CACHE_TTL.report, () => loadDashboard(tenantId))
+}
+
+export function getFinancialReport(tenantId: string, months = 6) {
+  return cached(`reports:financial:${tenantId}:${months}`, CACHE_TTL.report, () => loadFinancialReport(tenantId, months))
+}
+
+export function getOccupancyReport(tenantId: string) {
+  return cached(`reports:occupancy:${tenantId}`, CACHE_TTL.report, () => loadOccupancyReport(tenantId))
 }

@@ -133,6 +133,15 @@ function buildQuery(params?: Record<string, string | number | undefined>): strin
 const SESSION_EXPIRED_EVENT = 'session-expired'
 const publicEndpoints = new Set(['/api/auth/login', '/api/auth/register', '/api/auth/me', '/api/auth/refresh'])
 
+const GET_CACHE_TTL = 10_000
+const getCache = new Map<string, { at: number; data: unknown }>()
+const inflightGets = new Map<string, Promise<unknown>>()
+
+export function clearGetCache(): void {
+  getCache.clear()
+  inflightGets.clear()
+}
+
 export function emitSessionExpired(): void {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT))
@@ -163,6 +172,8 @@ async function doRequest<T>(endpoint: string, options: RequestInit = {}): Promis
     throw new ApiError(res.status, message)
   }
 
+  if ((options.method ?? 'GET').toUpperCase() !== 'GET') clearGetCache()
+
   return json as T
 }
 
@@ -182,17 +193,40 @@ async function tryRefreshSession(): Promise<boolean> {
 }
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  try {
-    return await doRequest<T>(endpoint, options)
-  } catch (error) {
-    if (error instanceof ApiError && error.status === 401 && !publicEndpoints.has(endpoint)) {
-      const refreshed = await tryRefreshSession()
-      if (refreshed) {
-        return doRequest<T>(endpoint, options)
+  const method = (options.method ?? 'GET').toUpperCase()
+  const cacheable = method === 'GET' && !endpoint.startsWith('/api/auth')
+
+  if (cacheable) {
+    const hit = getCache.get(endpoint)
+    if (hit && Date.now() - hit.at < GET_CACHE_TTL) return hit.data as T
+    const pending = inflightGets.get(endpoint)
+    if (pending) return pending as Promise<T>
+  }
+
+  const run = (async () => {
+    try {
+      return await doRequest<T>(endpoint, options)
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401 && !publicEndpoints.has(endpoint)) {
+        const refreshed = await tryRefreshSession()
+        if (refreshed) {
+          return doRequest<T>(endpoint, options)
+        }
+        emitSessionExpired()
       }
-      emitSessionExpired()
+      throw error
     }
-    throw error
+  })()
+
+  if (!cacheable) return run
+
+  inflightGets.set(endpoint, run)
+  try {
+    const data = await run
+    getCache.set(endpoint, { at: Date.now(), data })
+    return data
+  } finally {
+    inflightGets.delete(endpoint)
   }
 }
 

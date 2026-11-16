@@ -1,9 +1,10 @@
-import type { Metadata } from "next"
+import { legalMetadata } from "@/lib/seo"
 
-export const metadata: Metadata = {
-  title: "Terminos y condiciones",
-  description: "Condiciones de uso del sistema HotelManager PMS y sus funcionalidades.",
-}
+export const metadata = legalMetadata(
+  "Terminos y condiciones",
+  "Condiciones de uso del sistema HotelManager PMS y sus funcionalidades.",
+  "/legal/terminos",
+)
 
 export default function TerminosPage() {
   return (

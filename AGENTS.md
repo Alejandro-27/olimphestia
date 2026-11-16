@@ -37,8 +37,8 @@ pnpm dev:api                                  # Backend en http://localhost:3001
 | `pnpm build` | Build frontend |
 | `pnpm build:api` | Build backend (tsc → `dist/`) |
 | `pnpm lint` | ESLint frontend |
-| `pnpm test` | Vitest frontend (71 tests) |
-| `pnpm test:api` | Vitest backend (35 tests, requiere PostgreSQL) |
+| `pnpm test` | Vitest frontend (73 tests) |
+| `pnpm test:api` | Vitest backend (39 tests, requiere PostgreSQL) |
 | `docker compose up -d` | Levantar PostgreSQL |
 | `pnpm --filter @hotel/backend db:migrate` | Aplicar migraciones |
 | `pnpm --filter @hotel/backend db:generate` | Generar migración desde schema |
@@ -85,7 +85,7 @@ backend/                    ← @hotel/backend — Fastify API (PostgreSQL)
 ├── src/
 │   ├── app.ts              ← Instancia Fastify (exportada para Vercel)
 │   ├── index.ts            ← Entry point (migrate + listen)
-│   ├── api.test.ts         ← Tests de API (fastify.inject, 35 tests)
+│   ├── api.test.ts         ← Tests de API (fastify.inject, 36 tests)
 │   ├── config/env.ts       ← Variables de entorno
 │   ├── db/
 │   │   ├── index.ts        ← Conexión PostgreSQL (postgres-js)
