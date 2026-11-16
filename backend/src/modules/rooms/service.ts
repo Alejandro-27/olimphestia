@@ -30,9 +30,12 @@ export async function getOccupiedRoomIds(tenantId: string): Promise<Set<string>>
 }
 
 async function loadRooms(tenantId: string, filters: RoomFilters = {}) {
-  const occupied = await getOccupiedRoomIds(tenantId)
+  const [occupied, roomRows] = await Promise.all([
+    getOccupiedRoomIds(tenantId),
+    db.select().from(rooms).where(eq(rooms.tenantId, tenantId)),
+  ])
 
-  const rows = (await db.select().from(rooms).where(eq(rooms.tenantId, tenantId))).map((room) =>
+  const rows = roomRows.map((room) =>
     occupied.has(room.id) && room.status !== 'mantenimiento' && room.status !== 'limpieza'
       ? { ...room, status: 'ocupada' as RoomStatus }
       : room,

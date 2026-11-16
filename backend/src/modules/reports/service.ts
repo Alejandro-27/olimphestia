@@ -24,37 +24,37 @@ function effectiveStatus(room: { id: string; status: string }, occupiedIds: Set<
 async function loadDashboard(tenantId: string) {
   const today = todayStr()
 
-  const [stats] = await db.select({
-    totalRooms: sql<number>`count(distinct ${rooms.id})`,
-    occupiedRooms: sql<number>`count(distinct ${rooms.id}) filter (where ${rooms.status} = 'ocupada' or (${rooms.status} not in ('mantenimiento', 'limpieza') and ${reservations.roomId} is not null))`,
-    lodging: sql<number>`(select coalesce(sum(rm.price_per_night), 0) from ${reservations} r join ${rooms} rm on rm.id = r.room_id where r.tenant_id = ${tenantId} and r.status = 'checkin')`,
-    catering: sql<number>`(select coalesce(sum(s.total), 0) from ${sales} s where s.tenant_id = ${tenantId} and s.date = ${today})`,
-  }).from(rooms)
-    .leftJoin(reservations, and(
-      eq(reservations.roomId, rooms.id),
-      eq(reservations.tenantId, rooms.tenantId),
-      inArray(reservations.status, ['confirmada', 'checkin']),
-      gt(reservations.checkOut, today),
-    ))
-    .where(eq(rooms.tenantId, tenantId))
+  const [[stats], pendingCheckins, lowStockProducts] = await Promise.all([
+    db.select({
+      totalRooms: sql<number>`count(distinct ${rooms.id})`,
+      occupiedRooms: sql<number>`count(distinct ${rooms.id}) filter (where ${rooms.status} = 'ocupada' or (${rooms.status} not in ('mantenimiento', 'limpieza') and ${reservations.roomId} is not null))`,
+      lodging: sql<number>`(select coalesce(sum(rm.price_per_night), 0) from ${reservations} r join ${rooms} rm on rm.id = r.room_id where r.tenant_id = ${tenantId} and r.status = 'checkin')`,
+      catering: sql<number>`(select coalesce(sum(s.total), 0) from ${sales} s where s.tenant_id = ${tenantId} and s.date = ${today})`,
+    }).from(rooms)
+      .leftJoin(reservations, and(
+        eq(reservations.roomId, rooms.id),
+        eq(reservations.tenantId, rooms.tenantId),
+        inArray(reservations.status, ['confirmada', 'checkin']),
+        gt(reservations.checkOut, today),
+      ))
+      .where(eq(rooms.tenantId, tenantId)),
+    db.select()
+      .from(reservations)
+      .where(and(
+        eq(reservations.tenantId, tenantId),
+        eq(reservations.status, 'confirmada'),
+      ))
+      .orderBy(desc(reservations.checkIn)),
+    db.select().from(products).where(and(
+      eq(products.tenantId, tenantId),
+      eq(products.active, true),
+      lt(products.currentStock, products.minStock),
+    )),
+  ])
 
   const totalRooms = Number(stats?.totalRooms ?? 0)
   const occupied = Number(stats?.occupiedRooms ?? 0)
   const occupancyRate = totalRooms > 0 ? Math.round((occupied / totalRooms) * 100) : 0
-
-  const pendingCheckins = await db.select()
-    .from(reservations)
-    .where(and(
-      eq(reservations.tenantId, tenantId),
-      eq(reservations.status, 'confirmada'),
-    ))
-    .orderBy(desc(reservations.checkIn))
-
-  const lowStockProducts = await db.select().from(products).where(and(
-    eq(products.tenantId, tenantId),
-    eq(products.active, true),
-    lt(products.currentStock, products.minStock),
-  ))
 
   return {
     occupancyRate,
@@ -122,12 +122,14 @@ async function loadFinancialReport(tenantId: string, months = 6) {
 }
 
 async function loadOccupancyReport(tenantId: string) {
-  const allRooms = await db.select({
-    id: rooms.id,
-    type: rooms.type,
-    status: rooms.status,
-  }).from(rooms).where(eq(rooms.tenantId, tenantId))
-  const occupiedIds = await getOccupiedRoomIds(tenantId)
+  const [allRooms, occupiedIds] = await Promise.all([
+    db.select({
+      id: rooms.id,
+      type: rooms.type,
+      status: rooms.status,
+    }).from(rooms).where(eq(rooms.tenantId, tenantId)),
+    getOccupiedRoomIds(tenantId),
+  ])
   const total = allRooms.length
   const occupied = allRooms.filter(r => effectiveStatus(r, occupiedIds) === 'ocupada').length
 
