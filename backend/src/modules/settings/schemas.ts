@@ -5,8 +5,8 @@ export const updateSettingsSchema = z.object({
   taxId: z.string().max(40).optional(),
   address: z.string().max(200).optional(),
   phone: z.string().max(30).optional(),
-  email: z.union([z.literal(''), z.string().trim().email('Email inválido')]).optional(),
+  email: z.union([z.literal(''), z.string().trim().email('Email inválido').max(254)]).optional(),
   jurisdiction: z.string().max(120).optional(),
-})
+}).strict()
 
 export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>

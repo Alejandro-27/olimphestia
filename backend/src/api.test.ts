@@ -1,10 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import type { FastifyInstance } from 'fastify'
+import { randomUUID } from 'node:crypto'
+import bcrypt from 'bcryptjs'
 import { eq } from 'drizzle-orm'
 import { buildApp } from './app.js'
 import { env } from './config/env.js'
 import { db } from './db/index.js'
-import { users } from './db/schema.js'
+import { tenants, users } from './db/schema.js'
 
 let app: FastifyInstance
 
@@ -1008,5 +1010,202 @@ describe('cors', () => {
     expect(res.statusCode).toBe(204)
     expect(res.headers['access-control-allow-origin']).toBe(allowedOrigin)
     expect(res.headers['access-control-allow-methods']).toContain('PATCH')
+  })
+})
+describe('seguridad', () => {
+  it('rechaza reservas cuyo check-out ya pasó', async () => {
+    const adminToken = await loginAsAdmin()
+    const token = await registerUser(`sec-past-${Date.now()}@test.com`)
+
+    const guest = await app.inject({
+      method: 'POST',
+      url: '/api/guests',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { name: 'Huesped Pasado', document: `PST-${Date.now()}` },
+    })
+    const room = await app.inject({
+      method: 'POST',
+      url: '/api/rooms',
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: { number: `PST-${Date.now()}`, floor: 1, type: 'doble', maxCapacity: 2, pricePerNight: 80 },
+    })
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/reservations',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        guestId: (guest.json() as { id: string }).id,
+        roomId: (room.json() as { id: string }).id,
+        checkIn: '2020-01-01',
+        checkOut: '2020-01-05',
+        guests: 1,
+        paymentMethod: 'efectivo',
+        acceptCancellationPolicy: true,
+      },
+    })
+
+    expect(res.statusCode).toBe(400)
+    expect((res.json() as { error: string }).error).toContain('pasado')
+  })
+
+  it('calcula el total con el precio de la BD, no con el enviado por el cliente', async () => {
+    const adminToken = await loginAsAdmin()
+    const token = await registerUser(`sec-price-${Date.now()}@test.com`)
+
+    const product = await app.inject({
+      method: 'POST',
+      url: '/api/products',
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: { name: `Cafe ${Date.now()}`, category: 'bebidas', price: 25, currentStock: 10 },
+    })
+    expect(product.statusCode).toBe(201)
+
+    const sale = await app.inject({
+      method: 'POST',
+      url: '/api/sales',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        items: [{ productId: (product.json() as { id: string }).id, quantity: 2, unitPrice: 0.01 }],
+        paymentMethod: 'efectivo',
+      },
+    })
+
+    expect(sale.statusCode).toBe(201)
+    expect((sale.json() as { total: number }).total).toBe(50)
+  })
+
+  it('no expone reservas de otro hotel (aislamiento por tenant)', async () => {
+    const adminToken = await loginAsAdmin()
+    const token = await registerUser(`sec-own-${Date.now()}@test.com`)
+
+    const guest = await app.inject({
+      method: 'POST',
+      url: '/api/guests',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { name: 'Huesped Propio', document: `OWN-${Date.now()}` },
+    })
+    const room = await app.inject({
+      method: 'POST',
+      url: '/api/rooms',
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: { number: `OWN-${Date.now()}`, floor: 1, type: 'doble', maxCapacity: 2, pricePerNight: 80 },
+    })
+    const reservation = await app.inject({
+      method: 'POST',
+      url: '/api/reservations',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        guestId: (guest.json() as { id: string }).id,
+        roomId: (room.json() as { id: string }).id,
+        checkIn: '2026-12-10',
+        checkOut: '2026-12-12',
+        guests: 1,
+        paymentMethod: 'efectivo',
+        acceptCancellationPolicy: true,
+      },
+    })
+    expect(reservation.statusCode).toBe(201)
+
+    const now = new Date().toISOString()
+    const otherTenantId = randomUUID()
+    await db.insert(tenants).values({
+      id: otherTenantId,
+      name: 'Hotel Ajeno',
+      slug: `ajeno-${Date.now()}`,
+      createdAt: now,
+      updatedAt: now,
+    })
+    const otherEmail = `sec-other-${Date.now()}@test.com`
+    await db.insert(users).values({
+      id: randomUUID(),
+      name: 'Admin Ajeno',
+      email: otherEmail,
+      passwordHash: await bcrypt.hash('Password123!', 10),
+      role: 'admin',
+      status: 'activo',
+      tenantId: otherTenantId,
+      invitedBy: null,
+      termsAcceptedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    })
+    const otherLogin = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { email: otherEmail, password: 'Password123!' },
+    })
+    const otherToken = otherLogin.cookies.find((cookie) => cookie.name === 'token')?.value ?? ''
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/reservations/${(reservation.json() as { id: string }).id}`,
+      headers: { authorization: `Bearer ${otherToken}` },
+    })
+
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('no devuelve la contraseña al crear una recepción', async () => {
+    const adminToken = await loginAsAdmin()
+    const email = `sec-rec-${Date.now()}@test.com`
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/auth/recepcion',
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: { name: 'Recepcion Segura', email, password: 'Password123!' },
+    })
+
+    expect(res.statusCode).toBe(201)
+    const body = res.json() as { password?: string; user: { email: string } }
+    expect(body.password).toBeUndefined()
+    expect(body.user.email).toBe(email)
+  })
+
+  it('rechaza campos no declarados en el body', async () => {
+    const token = await registerUser(`sec-strict-${Date.now()}@test.com`)
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/guests',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { name: 'Huesped Estricto', document: `STR-${Date.now()}`, tenantId: 'tenant_evil' },
+    })
+
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('cierra el registro público cuando ALLOW_REGISTRATION=false', async () => {
+    const previous = process.env.ALLOW_REGISTRATION
+    process.env.ALLOW_REGISTRATION = 'false'
+    try {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/auth/register',
+        payload: { name: 'Cuenta Cerrada', email: `closed-${Date.now()}@test.com`, password: 'Password123!', acceptTerms: true },
+      })
+      expect(res.statusCode).toBe(403)
+    } finally {
+      process.env.ALLOW_REGISTRATION = previous
+    }
+  })
+
+  it('un refresh token reutilizado deja de ser válido', async () => {
+    const email = `sec-refresh-${Date.now()}@test.com`
+    await registerUser(email)
+
+    const login = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { email, password: 'Password123!' },
+    })
+    const refreshToken = login.cookies.find((cookie) => cookie.name === 'refreshToken')?.value ?? ''
+
+    const first = await app.inject({ method: 'POST', url: '/api/auth/refresh', cookies: { refreshToken } })
+    expect(first.statusCode).toBe(200)
+
+    const second = await app.inject({ method: 'POST', url: '/api/auth/refresh', cookies: { refreshToken } })
+    expect(second.statusCode).toBe(401)
   })
 })

@@ -28,7 +28,7 @@ pnpm test             # Vitest (fastify.inject contra BD hotel_manager_test)
 src/
 ├── app.ts              ← buildApp(): Fastify + CORS + plugins + rutas (exportado para Vercel)
 ├── index.ts            ← migrate on boot + listen (PORT 3001)
-├── api.test.ts         ← Tests de API (fastify.inject, 36 tests)
+├── api.test.ts         ← Tests de API (fastify.inject, 46 tests)
 ├── config/env.ts       ← DATABASE_URL, JWT_SECRET, PORT, CORS_ORIGIN, TRUST_PROXY, ALLOW_REGISTRATION
 ├── db/
 │   ├── index.ts        ← postgres client (pool max: 10) + drizzle instance

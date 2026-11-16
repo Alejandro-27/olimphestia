@@ -4,7 +4,7 @@ import type { ReservationStatus } from '@hotel/types'
 import { db } from '../../db/index.js'
 import { guests, invoices, reservations, rooms } from '../../db/schema.js'
 import { AppError } from '../../plugins/error-handler.js'
-import { syncInvoiceForReservation } from '../billing/service.js'
+import { syncInvoiceForReservation, type DbLike } from '../billing/service.js'
 import type { CreateReservationInput } from './schemas.js'
 
 export interface ReservationFilters {
@@ -42,7 +42,7 @@ export async function getReservationById(tenantId: string, id: string) {
   return reservation
 }
 
-export async function checkRoomAvailability(tenantId: string, roomId: string, checkIn: string, checkOut: string, excludeId?: string): Promise<void> {
+export async function checkRoomAvailability(tx: DbLike, tenantId: string, roomId: string, checkIn: string, checkOut: string, excludeId?: string): Promise<void> {
   const conditions = [
     eq(reservations.tenantId, tenantId),
     eq(reservations.roomId, roomId),
@@ -50,7 +50,7 @@ export async function checkRoomAvailability(tenantId: string, roomId: string, ch
     lt(reservations.checkIn, checkOut),
     gt(reservations.checkOut, checkIn),
   ]
-  const overlapping = (await db.select().from(reservations).where(and(...conditions)).limit(1))[0]
+  const overlapping = (await tx.select().from(reservations).where(and(...conditions)).limit(1))[0]
 
   if (overlapping && overlapping.id !== excludeId) {
     throw new AppError(409, `La habitación ya tiene una reserva del ${overlapping.checkIn} al ${overlapping.checkOut}`)
@@ -60,6 +60,11 @@ export async function checkRoomAvailability(tenantId: string, roomId: string, ch
 export async function createReservation(tenantId: string, input: CreateReservationInput) {
   if (new Date(input.checkOut) <= new Date(input.checkIn)) {
     throw new AppError(400, 'La fecha de salida debe ser posterior a la de entrada')
+  }
+  // Se permite backfill de estancias pasadas (check-in anterior), pero no crear
+  // reservas que ya terminaron.
+  if (input.checkOut < new Date().toISOString().slice(0, 10)) {
+    throw new AppError(400, 'La fecha de salida no puede estar en el pasado')
   }
 
   return db.transaction(async (tx) => {
@@ -79,7 +84,7 @@ export async function createReservation(tenantId: string, input: CreateReservati
       throw new AppError(400, `La habitación tiene capacidad máxima de ${room.maxCapacity} personas`)
     }
 
-    await checkRoomAvailability(tenantId, input.roomId, input.checkIn, input.checkOut)
+    await checkRoomAvailability(tx, tenantId, input.roomId, input.checkIn, input.checkOut)
 
     const now = new Date().toISOString()
     const id = randomUUID()

@@ -17,13 +17,13 @@ Documento de **estado dinámico** del proyecto. Complementa a `AGENTS.md` (conve
 - Fecha: 2026-11-16 · Rama: `main` · Último commit: `0e934c3` (consultas paralelas en informes)
 - **Pendiente**: redesplegar backend en Render (Manual Deploy). Cloudflare Pages ya auto-desplegó el frontend. La migración `0001_perf_indexes` ya está aplicada y registrada en Neon (`drizzle.__drizzle_migrations`), así que el arranque de Render no ejecutará DDL.
 - **Hotel del superadmin**: `tenant_default` (“Hotel Principal Edit”) aloja al superadmin y **no se puede desactivar** (el backend responde 400). `listTenants` devuelve `hasSuperadmin` y la UI muestra un badge “Sistema” en lugar del botón. Los hoteles reales (p. ej. “Punta Arena”) sí se desactivan.
-- Código fuente: `tsc` limpio en frontend y backend; `pnpm test` **73/73** frontend y `pnpm test:api` **39/39** OK
+- Código fuente: `tsc` limpio en frontend y backend; `pnpm test` **73/73** frontend y `pnpm test:api` **46/46** OK
 - **Datos**: insertada fila `settings` para el hotel Punta Arena en Neon (el 500 de `/api/settings` era por ausencia de fila); `updateSettings` ahora hace upsert.
 - **Navegación SPA**: las vistas se cambian con `activeView`/`onNavigate`; `DashboardView` y `SystemReportsView` ya no usan `router.push` (causaba 404 en Cloudflare Pages porque `/calendar`, `/reports`, etc. no existen como archivos). El `_redirects` solo vive en `frontend/public/` (se copia a `out/`); se eliminaron `wrangler.toml` y `_redirects` de la raíz (el `wrangler.toml` era inválido y rompía el deploy).
 - **Informes del Sistema**: el backend devuelve `{ tenants }` y el frontend acepta también el formato antiguo (array); la vista tolera fallos de sesión sin romper el render.
 - **Playwright MCP operativo**: Chromium instalado en `~/.cache/ms-playwright` y MCP configurado con `--executable-path` (sin sudo). Sirve para reproducir 404, revisar consola y validar navegación.
 - Problema conocido: `GET /api/auth/me 401` en producción si el token no es válido o el backend no tiene los cambios más recientes; el sidebar y vistas deben manejar sesión inválida sin fallar
-- **Auditoría de dependencias**: `pnpm audit --prod` → 0 vulnerabilidades. En dev queda 1 moderada (`esbuild@0.18.20` vía `drizzle-kit`/`@esbuild-kit`; solo afecta al dev-server de esbuild, no se usa así). Resuelto con `overrides` en `pnpm-workspace.yaml` (pnpm v12 ya no lee `pnpm.overrides` de `package.json`).
+- **Auditoría de dependencias (2026-11-16)**: `pnpm audit --prod` → 1 alta (`zod <4.6.6`, agotamiento de memoria en colecciones gigantes; no explotable aquí porque todos los arrays/strings tienen `.max()` y el body está limitado a 1 MB; subir a zod 4 rompe `zodResolver` y `zod/v4`). Resto resuelto: `next` 16.4.6 (2 CVEs críticas), `fastify` 5.12.8, `@fastify/jwt` 10.2.8 (`fast-jwt` 6.3.6), `@fastify/rate-limit` 11.2.2 y overrides de `fast-uri` 3.1.9/4.2.3, `source-map-js` 1.2.2, `ip-address` 10.7.4 en `pnpm-workspace.yaml`. `allowBuilds.workerd` estaba con el placeholder de pnpm; ahora `true`.
 - Revertidos los cambios **visuales** de la auditoría de 7 fases a petición del usuario: la estética previa queda intacta. Se conserva la funcionalidad (legal, settings, consentimientos) y atributos sin impacto (`aria-*`, foco).
 - Browser bridge roto → verificación visual manual en `pnpm dev` (pendiente comprobar la CSP de producción, que solo aplica con `next build && next start`).
 
@@ -32,7 +32,7 @@ Documento de **estado dinámico** del proyecto. Complementa a `AGENTS.md` (conve
 | Recurso | Conteo | Fuente |
 |---|---|---|
 | Frontend | 73 tests | `pnpm test` (verificado 2026-11-16, 73/73) |
-| Backend | 39 tests | `pnpm test:api` (verificado 2026-11-16, 39/39) |
+| Backend | 46 tests | `pnpm test:api` (verificado 2026-11-16, 46/46) |
 | Bruno | 46 requests | `backend/bruno/` |
 
 ## Decisiones recientes (con su porqué)
@@ -46,6 +46,7 @@ Documento de **estado dinámico** del proyecto. Complementa a `AGENTS.md` (conve
 - **Ocupacion derivada de reservas**: `getOccupiedRoomIds()` considera vigente toda reserva `confirmada`/`checkin` con `checkOut > hoy` (incluye futuras); `listRooms()` superpone `ocupada` sobre el estado guardado salvo `mantenimiento`/`limpieza`. Al pasar el check-out la habitacion se libera sola, sin escrituras ni jobs. `rooms-view` muestra el huesped de la reserva vigente y permite cambiar el estado guardado.
 - **Cambio en efectivo**: helper `cashChange(total, received)` en `lib/utils.ts`; se muestra en TPV, anticipo de reserva y pago de factura, y bloquea el cobro si el efectivo no llega.
 - **Sesiones refresh server-side** (`refresh_sessions`) con rotación obligatoria: cada `/api/auth/refresh` invalida el token usado y emite uno nuevo; logout y cambio de contraseña revocan todas. Cierra el agujero de refresh no revocable. El `jti` va **en el payload** (los tipos de `@fastify/jwt` no aceptan la opción `jwtid`).
+- **Endurecimiento OWASP (2026-11-16)**: JWT fijado a HS256 (sign+verify) y `JWT_SECRET` obligatorio de ≥32 caracteres en producción; rotación de refresh atómica (`UPDATE ... WHERE revoked_at IS NULL RETURNING`); lockout de login por `IP|email` (no bloqueable por terceros) con poda del Map; `ALLOW_REGISTRATION` aplicado de verdad (bootstrap solo si no hay usuarios, siempre `pendiente`); `checkRoomAvailability` dentro de la misma transacción (evita agotar el pool); rechazo de reservas cuyo `checkOut` ya pasó; schemas zod `.strict()` + `.max()`; helmet con `frame-ancestors 'none'` y HSTS solo en producción; `Sec-Fetch-Site` como fallback CSRF; rate limit en reservas/cambio de contraseña/alta de recepción; `/api/auth/recepcion` ya no devuelve la contraseña. El frontend sirve cabeceras por `frontend/public/_headers` (con `output: 'export'`, `next.config.headers()` se ignora).
 - **Registro público cerrado por defecto** (`ALLOW_REGISTRATION=false`): el primer usuario (bootstrap, cuando no hay ninguno) siempre puede registrarse; el resto da 403. En dev queda abierto.
 - **Lockout de login en memoria** (5 fallos → 15 min, por proceso; coherente con el store del rate-limit): suficiente para una sola instancia. Con varias réplicas necesita store compartido (Redis).
 - **`TRUST_PROXY` desactivado por defecto** (antes se activaba en producción): tras un proxy real hay que ponerlo (`TRUST_PROXY=127.0.0.1` o CIDR) o el rate-limit comparte la IP del proxy. Es un `needs-validation` de despliegue.

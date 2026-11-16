@@ -7,8 +7,8 @@ const jwtSecret = process.env.JWT_SECRET ?? 'dev-secret-change-me'
 const databaseUrl = process.env.DATABASE_URL ?? 'postgres://hotel:hotel123@localhost:5432/hotel_manager'
 
 if (nodeEnv === 'production') {
-  if (jwtSecret === 'dev-secret-change-me') {
-    throw new Error('JWT_SECRET debe configurarse explícitamente en producción')
+  if (jwtSecret === 'dev-secret-change-me' || jwtSecret.length < 32) {
+    throw new Error('JWT_SECRET debe configurarse en producción con al menos 32 caracteres')
   }
   if (databaseUrl === 'postgres://hotel:hotel123@localhost:5432/hotel_manager') {
     throw new Error('DATABASE_URL debe configurarse explícitamente en producción')

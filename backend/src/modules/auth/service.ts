@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { and, asc, eq, sql } from 'drizzle-orm'
+import { and, asc, eq, gt, isNull, sql } from 'drizzle-orm'
 import bcrypt from 'bcryptjs'
 import { db } from '../../db/index.js'
 import { refreshSessions, tenants, users, rooms, reservations, sales } from '../../db/schema.js'
@@ -7,6 +7,7 @@ import { AppError } from '../../plugins/error-handler.js'
 import type { LoginInput, RegisterInput, UpdateProfileInput, UpdateTenantInput } from './schemas.js'
 import type { AuthUser } from '../../plugins/auth.js'
 import { CACHE_TTL, cached } from '../../lib/cache.js'
+import { isRegistrationAllowed } from '../../config/env.js'
 
 export interface PublicUser {
   id: string
@@ -48,6 +49,13 @@ function toPublicUser(u: {
 }
 
 function registerFailure(email: string) {
+  // Poda simple para que un atacante no haga crecer el Map sin límite.
+  if (loginAttempts.size > 5000) {
+    const now = Date.now()
+    for (const [key, state] of loginAttempts) {
+      if (!state.lockedUntil || state.lockedUntil <= now) loginAttempts.delete(key)
+    }
+  }
   const state = loginAttempts.get(email) ?? { fails: 0, lockedUntil: 0 }
   state.fails += 1
   if (state.fails >= LOGIN_MAX_FAILS) state.lockedUntil = Date.now() + LOGIN_LOCK_MS
@@ -58,6 +66,14 @@ export async function register(input: RegisterInput): Promise<PublicUser> {
   const existing = (await db.select().from(users).where(eq(users.email, input.email)).limit(1))[0]
   if (existing) {
     throw new AppError(409, 'El email ya está registrado')
+  }
+
+  const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(users)
+  // shortcut: el bootstrap no es atómico; dos registros simultáneos sobre una BD
+  // vacía podrían pasar el gate. Aceptable en el arranque inicial.
+  const bootstrap = Number(count) === 0
+  if (!bootstrap && !isRegistrationAllowed()) {
+    throw new AppError(403, 'El registro público está desactivado. Contacte con el administrador')
   }
 
   const passwordHash = await bcrypt.hash(input.password, 10)
@@ -93,8 +109,9 @@ export async function register(input: RegisterInput): Promise<PublicUser> {
   })
 }
 
-export async function login(input: LoginInput): Promise<PublicUser> {
-  const key = input.email.toLowerCase()
+export async function login(input: LoginInput, ip: string): Promise<PublicUser> {
+  // La clave incluye la IP: un atacante no puede bloquear la cuenta de otra persona.
+  const key = `${ip}|${input.email.toLowerCase()}`
   const state = loginAttempts.get(key)
   if (state?.lockedUntil && state.lockedUntil > Date.now()) {
     throw new AppError(429, 'Demasiados intentos fallidos. Intente de nuevo en unos minutos')
@@ -233,12 +250,19 @@ export async function createRefreshSession(id: string, userId: string, tenantId:
 }
 
 export async function rotateRefreshSession(oldId: string, userId: string): Promise<boolean> {
-  const session = (await db.select().from(refreshSessions).where(eq(refreshSessions.id, oldId)).limit(1))[0]
-  if (!session || session.revokedAt || session.userId !== userId) return false
-  if (new Date(session.expiresAt).getTime() <= Date.now()) return false
+  // Revocación atómica: solo el primer refresh con este jti gana.
+  const revoked = await db
+    .update(refreshSessions)
+    .set({ revokedAt: new Date().toISOString() })
+    .where(and(
+      eq(refreshSessions.id, oldId),
+      eq(refreshSessions.userId, userId),
+      isNull(refreshSessions.revokedAt),
+      gt(refreshSessions.expiresAt, new Date().toISOString()),
+    ))
+    .returning({ id: refreshSessions.id })
 
-  await db.update(refreshSessions).set({ revokedAt: new Date().toISOString() }).where(eq(refreshSessions.id, oldId))
-  return true
+  return revoked.length > 0
 }
 
 export async function revokeRefreshSession(id: string): Promise<void> {

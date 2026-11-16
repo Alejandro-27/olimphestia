@@ -42,15 +42,14 @@ export function RecepcionCreateView() {
     e.preventDefault()
     setLoading(true)
     try {
-      const response = await api.auth.createRecepcion({
+      await api.auth.createRecepcion({
         name,
         email,
         password,
         ...(tenantId ? { tenantId } : {}),
       })
-      // El servidor retorna la contraseña en texto plano solo en esta respuesta
-      const createdPassword = (response as { password?: string }).password
-      setGeneratedPassword(createdPassword ?? null)
+      // El backend ya no devuelve la contraseña; el admin acaba de escribirla.
+      setGeneratedPassword(password)
       setSuccess(true)
       setName("")
       setEmail("")

@@ -282,7 +282,7 @@ export const api = {
       request<{ tenants: TenantStats[] }>('/api/auth/system-reports/tenants'),
 
     createRecepcion: (input: CreateRecepcionInput) =>
-      request<{ user: AuthUser; password?: string }>('/api/auth/recepcion', {
+      request<{ user: AuthUser }>('/api/auth/recepcion', {
         method: 'POST',
         body: JSON.stringify(input),
       }),

@@ -7,6 +7,7 @@ export default defineConfig({
     globalSetup: ['./test/global-setup.ts'],
     env: {
       NODE_ENV: 'test',
+      ALLOW_REGISTRATION: 'true',
       DATABASE_URL: process.env.TEST_DATABASE_URL ?? 'postgres://hotel:hotel123@localhost:5432/hotel_manager_test',
     },
     include: ['src/**/*.test.ts'],

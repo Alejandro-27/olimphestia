@@ -23,6 +23,7 @@ const normalizeOrigin = (value?: string) => value?.replace(/\/+$/, '') ?? value
 export function buildApp() {
   const app = Fastify({
     trustProxy: env.trustProxy,
+    bodyLimit: 1024 * 1024,
     logger: {
       level: env.nodeEnv === 'production' ? 'info' : 'debug',
       redact: {
@@ -59,7 +60,10 @@ export function buildApp() {
     const origin = normalizeOrigin(req.headers.origin)
     const isStateChanging = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)
 
-    if (isStateChanging && origin && !allowedOrigins.has(origin)) {
+    // Sin Origin (clientes no-browser) se permite; un navegador cross-site
+    // siempre lo envía, y Sec-Fetch-Site cubre el resto.
+    const crossSite = origin ? !allowedOrigins.has(origin) : req.headers['sec-fetch-site'] === 'cross-site'
+    if (isStateChanging && crossSite) {
       return reply.code(403).send({ error: 'Origen no permitido' })
     }
 
@@ -96,7 +100,19 @@ export function buildApp() {
   })
 
   app.register(fastifyCookie)
-  app.register(fastifyHelmet)
+  app.register(fastifyHelmet, {
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'none'"],
+        baseUri: ["'none'"],
+        formAction: ["'none'"],
+        frameAncestors: ["'none'"],
+      },
+    },
+    frameguard: { action: 'deny' },
+    hsts: env.nodeEnv === 'production' ? { maxAge: 15552000, includeSubDomains: true } : false,
+    crossOriginEmbedderPolicy: false,
+  })
   app.register(errorHandlerPlugin)
   app.register(authPlugin)
 

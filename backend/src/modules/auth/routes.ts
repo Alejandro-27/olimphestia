@@ -97,7 +97,7 @@ export default async function authRoutes(app: FastifyInstance) {
     config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
     schema: { body: loginSchema },
   }, async (req, reply) => {
-    const user = await login(req.body)
+    const user = await login(req.body, req.ip)
     await issueSession(reply, { id: user.id, name: user.name, email: user.email, role: user.role, status: user.status, tenantId: user.tenantId })
     reply.send({ user })
   })
@@ -167,6 +167,7 @@ export default async function authRoutes(app: FastifyInstance) {
 
   typedApp.post('/api/auth/password', {
     preHandler: [app.requireActive],
+    config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
     schema: { body: changePasswordSchema },
   }, async (req, reply) => {
     await changePassword(req.authUser.sub, req.body.currentPassword, req.body.newPassword)
@@ -273,6 +274,7 @@ export default async function authRoutes(app: FastifyInstance) {
 
   typedApp.post('/api/auth/recepcion', {
     preHandler: [app.requireAdmin],
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
     schema: { body: createRecepcionSchema },
   }, async (req, reply) => {
     const { name, email, password, tenantId } = req.body as CreateRecepcionInput
@@ -333,7 +335,6 @@ export default async function authRoutes(app: FastifyInstance) {
         tenantName,
         termsAcceptedAt: created.termsAcceptedAt,
       },
-      password, // Contraseña en texto plano solo en esta respuesta de creación
     })
   })
 }

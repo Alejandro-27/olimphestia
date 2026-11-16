@@ -26,6 +26,7 @@ export default async function reservationRoutes(app: FastifyInstance) {
 
   typedApp.post('/api/reservations', {
     preHandler: [app.authenticate],
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
     schema: { body: createReservationSchema },
   }, async (req, reply) => {
     const reservation = await createReservation(req.authUser.tenantId!, req.body)
