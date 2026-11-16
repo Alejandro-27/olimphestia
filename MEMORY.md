@@ -14,10 +14,10 @@ Documento de **estado dinámico** del proyecto. Complementa a `AGENTS.md` (conve
 
 ## Snapshot actual
 
-- Fecha: 2026-11-15 · Rama: `main` · Último commit: `c36d907` (hotel del superadmin marcado como “Sistema”)
-- **Pendiente**: redesplegar backend en Render (Manual Deploy) con los commits `584e575`/`879ceba`/`c36d907`; Cloudflare Pages ya auto-despliega desde `main` (el `wrangler.toml` inválido de la raíz era lo que rompía los deploys)
+- Fecha: 2026-11-16 · Rama: `main` · Último commit: `0e934c3` (consultas paralelas en informes)
+- **Pendiente**: redesplegar backend en Render (Manual Deploy). Cloudflare Pages ya auto-desplegó el frontend. La migración `0001_perf_indexes` ya está aplicada y registrada en Neon (`drizzle.__drizzle_migrations`), así que el arranque de Render no ejecutará DDL.
 - **Hotel del superadmin**: `tenant_default` (“Hotel Principal Edit”) aloja al superadmin y **no se puede desactivar** (el backend responde 400). `listTenants` devuelve `hasSuperadmin` y la UI muestra un badge “Sistema” en lugar del botón. Los hoteles reales (p. ej. “Punta Arena”) sí se desactivan.
-- Código fuente: `tsc` limpio en frontend y backend; `pnpm test` **71/71** frontend OK
+- Código fuente: `tsc` limpio en frontend y backend; `pnpm test` **73/73** frontend y `pnpm test:api` **39/39** OK
 - **Datos**: insertada fila `settings` para el hotel Punta Arena en Neon (el 500 de `/api/settings` era por ausencia de fila); `updateSettings` ahora hace upsert.
 - **Navegación SPA**: las vistas se cambian con `activeView`/`onNavigate`; `DashboardView` y `SystemReportsView` ya no usan `router.push` (causaba 404 en Cloudflare Pages porque `/calendar`, `/reports`, etc. no existen como archivos). El `_redirects` solo vive en `frontend/public/` (se copia a `out/`); se eliminaron `wrangler.toml` y `_redirects` de la raíz (el `wrangler.toml` era inválido y rompía el deploy).
 - **Informes del Sistema**: el backend devuelve `{ tenants }` y el frontend acepta también el formato antiguo (array); la vista tolera fallos de sesión sin romper el render.
@@ -31,12 +31,15 @@ Documento de **estado dinámico** del proyecto. Complementa a `AGENTS.md` (conve
 
 | Recurso | Conteo | Fuente |
 |---|---|---|
-| Frontend | 71 tests | `pnpm test` |
-| Backend | 35 tests | `pnpm test:api` (verificado 2026-11-09, 35/35) |
+| Frontend | 73 tests | `pnpm test` (verificado 2026-11-16, 73/73) |
+| Backend | 39 tests | `pnpm test:api` (verificado 2026-11-16, 39/39) |
 | Bruno | 46 requests | `backend/bruno/` |
 
 ## Decisiones recientes (con su porqué)
 
+- **Rendimiento sin coste extra**: consultas agregadas (informes 19→4, dashboard 6→3, tenants 1+4N→4), consultas independientes en paralelo, caché TTL/LRU en memoria del backend (15-60 s, limpiada en cualquier mutación) y caché de GETs de 10 s + dedupe en el cliente. Medido contra Neon: financial 2.7 s→0.18 s, dashboard 1.0 s→0.19 s, occupancy 0.5 s→0.17 s; repeticiones ~0 ms. Con más de una instancia en Render la caché puede quedar obsoleta hasta el TTL.
+- **Migraciones baseline**: se squashearon las 9 migraciones históricas en `0000_baseline.sql` (when = último aplicado en producción, se salta) + `0001_perf_indexes.sql` (IF NOT EXISTS, se aplica). La BD de test se recrea en cada ejecución para que el baseline sea determinista.
+- **SEO mínimo**: PMS con `noindex`; solo `/legal/*` indexable con canonical/OG; `robots.txt` y `sitemap.xml` estáticos (`force-static` por `output: 'export'`). Vistas del frontend con `next/dynamic` para sacar los ~944 KB de login del bundle inicial.
 - **Multitenant por hotel**: nueva tabla `tenants`; todas las tablas de negocio tienen `tenant_id` NOT NULL. Usuarios nacen como `pendiente` (sin rol, sin tenant); el admin del sistema los aprueba y les asigna hotel + rol. La recepción solo la crea el admin dentro de su hotel. Cada consulta filtra por `tenant_id` del usuario autenticado.
 - **Aprobación manual obligatoria**: no hay bootstrap automático. El primer usuario debe ser aprobado manualmente por el dueño del sistema desde `/api/auth/pending-requests`.
 - **Índices de optimización**: índices compuestos `(tenant_id, status/date/category/etc.)` en todas las tablas de negocio para evitar saturación de Render.
@@ -67,26 +70,14 @@ Documento de **estado dinámico** del proyecto. Complementa a `AGENTS.md` (conve
 
 ## Log de cambios recientes (podar lo viejo)
 
+- `0e934c3` perf: paralelizar consultas independientes en dashboard, ocupacion y habitaciones
+- `f7daeca` perf: consultas agregadas, cache en memoria e indices; SEO tecnico minimo (baseline de migraciones, robots/sitemap, noindex)
 - `c36d907` fix(tenants): `listTenants` devuelve `hasSuperadmin`; la UI marca el hotel del superadmin como “Sistema” y oculta el toggle (el 400 era intencional: evita dejar el sistema sin superadmin)
 - `815c3ac` feat: navegación por `activeView` (sin 404), informes del sistema y estado de hoteles
 - `8812eba` feat(multitenant): tenants por hotel, aprobación manual de cuentas, rol pendiente por defecto, tenant_id en todas las tablas, índices optimizados, endpoints de administración de solicitudes y recepciones
 - (sin commit) ci: eliminado workflow `wake-render.yml` de GitHub Actions; ahora el backend de Render se despierta con cron-job.org (`GET` a `https://olimphestia.onrender.com` cada 5 min)
 - (sin commit) habitaciones: ocupacion derivada de reservas (checkOut > hoy, liberacion al terminar), huesped actual en Gestion de Habitaciones y bloqueo de documento/email/telefono duplicados; efectivo recibido con cambio en anticipo de reserva y pago de factura
 - feat(ui): buscador de pais por nombre en reservas y edicion de huesped (`CountryCombobox` con cmdk y filtro sin acentos)
-- `84c6f75` feat(tpv): seleccion de habitacion ocupada al cargar productos, calculo de cambio en efectivo y categorias `almuerzos`/`cenas`
-- `6b42e19` docs: consentimientos persistidos, desplegable de pais y conteos
-- `45d6480` feat(frontend): pais desplegable con prefijo telefonico automatico
-- `1123bca` chore(docker): limites de recursos y tuning de PostgreSQL
-- `8e9f96e` feat(backend): persistir consentimientos con fecha
-- `97723b5` docs: conteos de tests y estado de seguridad
-- `ab4252f` chore(deps): next 16.3.8 + fastify 5.12.5 + overrides de auditoría
-- `a007a8f` feat(frontend): hardening de cabeceras y enlaces
-- `10204af` fix(backend): integridad financiera y validación de querystrings
-- `c2e265c` feat(backend): sesiones refresh revocables, lockout y CSRF
-- `fd8888e` feat(frontend): validacion numerica en inputs con aviso inline
-- `6c6d78b` feat: auditoria de 7 fases + legal, settings y consentimiento; reversión estética conservando accesibilidad; fix migración settings
-- `726bfce` docs: memoria del proyecto + documentación actualizada
-- `f89ee01` feat: informes exportables en XLSX y PDF con header del hotel
 
 ## Gotchas técnicos aprendidos
 
